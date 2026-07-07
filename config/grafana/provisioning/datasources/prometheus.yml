@@ -1,0 +1,11 @@
+# managed by metrics-stack
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://localhost:9090
+    isDefault: true
+    editable: true

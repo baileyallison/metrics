@@ -1,0 +1,30 @@
+# managed by metrics-stack
+groups:
+  - name: stack-alerts
+    rules:
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus config reload failed on {{ $labels.instance }}"
+          description: "The last Prometheus configuration reload failed on {{ $labels.instance }}. Check `promtool check config` output."
+
+      - alert: AlertmanagerConfigReloadFailed
+        expr: alertmanager_config_last_reload_successful == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager config reload failed on {{ $labels.instance }}"
+          description: "The last Alertmanager configuration reload failed on {{ $labels.instance }}. Check `amtool check-config` output."
+
+      - alert: AlertmanagerNotificationsFailing
+        expr: rate(alertmanager_notifications_failed_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alertmanager notifications failing for {{ $labels.integration }}"
+          description: "Alertmanager on {{ $labels.instance }} has failing notifications for integration {{ $labels.integration }} (rate: {{ $value | printf \"%.2f\" }}/s). Check SMTP settings via monitoring-configure-email."
