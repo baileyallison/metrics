@@ -143,13 +143,28 @@ jobs:
 
       - name: Check starter dashboard was provisioned
         run: |
-          sleep 5
-          curl -fsS -u admin:admin "http://localhost:3000/api/search?query=Node%20Overview" | python3 -c "
+          # Grafana's file-based dashboard provider polls every 30s
+          # (updateIntervalSeconds: 30 in provisioning/dashboards/local.yml),
+          # so retry rather than checking once right after install.
+          success=0
+          for i in $(seq 1 15); do
+            result="$(curl -fsS -u admin:admin "http://localhost:3000/api/search?query=Node%20Overview")"
+            if echo "$result" | python3 -c "
           import json, sys
           results = json.load(sys.stdin)
           print(results)
           assert any('Node Overview' in r.get('title', '') for r in results), 'starter dashboard not found'
-          "
+          "; then
+              success=1
+              break
+            fi
+            echo "dashboard not provisioned yet, retrying..."
+            sleep 5
+          done
+          if [ "$success" != "1" ]; then
+            echo "starter dashboard was not provisioned within the retry window"
+            exit 1
+          fi
 
       - name: Uninstall an exporter and confirm target cleanup
         run: |
