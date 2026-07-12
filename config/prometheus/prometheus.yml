@@ -11,8 +11,10 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
+        # 'alertmanager' resolves via the shared 'metrics' Podman network
+        # (see config/containers/metrics.network).
         - targets:
-            - localhost:9093
+            - alertmanager:9093
 
 scrape_configs:
   - job_name: prometheus
@@ -21,11 +23,15 @@ scrape_configs:
 
   - job_name: alertmanager
     static_configs:
-      - targets: ["localhost:9093"]
+      - targets: ["alertmanager:9093"]
 
   - job_name: node
     static_configs:
-      - targets: ["localhost:9100"]
+      # node-exporter runs with Network=host (it needs the host's real
+      # network/proc/sys view), so it isn't on the 'metrics' bridge network.
+      # host.containers.internal resolves to the host from bridge-networked
+      # containers on Podman 4.7+.
+      - targets: ["host.containers.internal:9100"]
 
   # Drop-in target discovery: add/remove files under targets.d/ to add or
   # remove exporters without editing this file or restarting Prometheus.

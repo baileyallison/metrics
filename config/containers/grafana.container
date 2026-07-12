@@ -1,0 +1,31 @@
+# managed by metrics-stack
+# Version control: bump the Image= tag below, commit, then
+# `sudo ./install.sh` (or `daemon-reload && systemctl restart grafana`)
+# to roll it out. Check https://hub.docker.com/r/grafana/grafana/tags for
+# newer releases before bumping.
+[Unit]
+Description=Grafana
+After=network-online.target prometheus.service
+Wants=network-online.target
+
+[Container]
+Image=docker.io/grafana/grafana:12.3.0
+ContainerName=grafana
+Network=metrics.network
+PublishPort=3000:3000
+
+# Datasource + dashboard-provider YAML, read-only.
+Volume=/etc/grafana/provisioning:/etc/grafana/provisioning:Z,ro
+
+# Grafana's own state (sqlite db, sessions) plus dashboards/ (polled by the
+# file provisioning provider every 30s -- see provisioning/dashboards/local.yml).
+# Read-write since Grafana needs to write its db here; monitoring-add-dashboard
+# only ever adds files under dashboards/, never touches the rest of this tree.
+Volume=/var/lib/grafana:/var/lib/grafana:Z,U
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

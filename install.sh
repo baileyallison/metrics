@@ -1,14 +1,28 @@
 #!/usr/bin/env bash
-# Installs/updates the metrics-stack: Prometheus, Alertmanager, Grafana,
-# node_exporter, plus provisioning and helper scripts. Works on Rocky Linux 9+
-# (and other EL9+ distros) and Ubuntu 22.04+ (and other Debian-family distros
-# with apt). Safe to re-run: existing local edits to deployed configs are
-# left alone unless --force-config is passed.
+# Installs/updates the metrics-stack: Prometheus, Alertmanager, Grafana, and
+# node_exporter, each running as a Podman container managed by a systemd
+# Quadlet unit. Works on Rocky Linux 9+ (and other EL9+ distros) and Ubuntu
+# 24.04+ (and other Debian-family distros with apt) -- both ship a Podman
+# new enough for Quadlet (4.4+) directly in their default repos.
+#
+# Only Podman itself comes from dnf/apt; Prometheus/Alertmanager/Grafana/
+# node_exporter versions are controlled by the Image= tags in
+# config/containers/*.container, which are tracked in this git repo. To
+# upgrade one of them: bump its tag, commit, and re-run this script (or just
+# `systemctl daemon-reload && systemctl restart <service>`).
+#
+# Safe to re-run: existing local edits to deployed configs/units are left
+# alone unless --force-config is passed.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE_CONFIG=0
 MARKER="managed by metrics-stack"
+
+QUADLET_DIR=/etc/containers/systemd
+PROM_CONF_DIR=/etc/prometheus
+AM_CONF_DIR=/etc/alertmanager
+GRAFANA_CONF_DIR=/etc/grafana
 
 for arg in "$@"; do
   case "$arg" in
@@ -17,11 +31,12 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: sudo ./install.sh [--force-config]
 
-Installs Prometheus, Alertmanager, Grafana, and node_exporter via the
-system package manager (dnf on EL, apt on Debian/Ubuntu), deploys default
-configuration and helper scripts, validates configs, and starts services.
+Installs Podman via the system package manager (dnf on EL, apt on Ubuntu/
+Debian), deploys Quadlet unit files and default configuration for
+Prometheus, Alertmanager, Grafana, and node_exporter, validates the
+configs, and starts the containers as systemd services.
 
-  --force-config   Overwrite locally-modified managed configs with the
+  --force-config   Overwrite locally-modified managed configs/units with the
                     versions shipped in this repo (backups are still made).
 EOF
       exit 0
@@ -76,8 +91,8 @@ if [[ "$DISTRO_FAMILY" == "el" ]]; then
 elif [[ "$DISTRO_FAMILY" == "debian" ]]; then
   if [[ "${ID:-}" == "ubuntu" ]]; then
     major="${VERSION_ID%%.*}"
-    if [[ "${major:-0}" -lt 22 ]]; then
-      echo "error: Ubuntu version $VERSION_ID detected; this stack targets 22.04+" >&2
+    if [[ "${major:-0}" -lt 24 ]]; then
+      echo "error: Ubuntu version $VERSION_ID detected; this stack targets 24.04+ (Ubuntu 22.04's Podman is too old for Quadlet, which needs 4.4+)" >&2
       exit 1
     fi
   fi
@@ -136,81 +151,23 @@ deploy_managed() {
 }
 
 # ---------------------------------------------------------------------------
-# EL (Rocky/RHEL/Alma) install path
+# Install Podman
 # ---------------------------------------------------------------------------
-install_el() {
-  log "configuring Grafana repo"
-  cat > /etc/yum.repos.d/grafana.repo <<'EOF'
-[grafana]
-name=grafana
-baseurl=https://rpm.grafana.com
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://rpm.grafana.com/gpg.key
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-EOF
-
-  log "configuring prometheus-rpm repo"
-  rpm --import https://packagecloud.io/prometheus-rpm/release/gpgkey 2>/dev/null || true
-  cat > /etc/yum.repos.d/prometheus.repo <<'EOF'
-[prometheus]
-name=prometheus
-baseurl=https://packagecloud.io/prometheus-rpm/release/el/$releasever/$basearch
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://packagecloud.io/prometheus-rpm/release/gpgkey
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-EOF
-
-  log "installing packages (dnf)"
-  dnf install -y prometheus2 alertmanager node_exporter grafana
-
-  PROM_CONF_DIR=/etc/prometheus
-  AM_CONF_DIR=/etc/alertmanager
-  PROM_SVC=prometheus
-  AM_SVC=alertmanager
-  GRAFANA_SVC=grafana-server
-}
-
-# ---------------------------------------------------------------------------
-# Ubuntu/Debian install path
-# ---------------------------------------------------------------------------
-install_ubuntu() {
-  log "installing prerequisites"
-  apt-get update -y
-  apt-get install -y apt-transport-https software-properties-common wget gnupg curl
-
-  log "configuring Grafana repo"
-  mkdir -p /etc/apt/keyrings
-  wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
-  echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
-    > /etc/apt/sources.list.d/grafana.list
-
-  log "installing packages (apt)"
-  apt-get update -y
-  # prometheus, alertmanager, and prometheus-node-exporter ship in Ubuntu's
-  # universe component; grafana comes from the repo configured above.
-  apt-get install -y prometheus prometheus-alertmanager prometheus-node-exporter grafana
-
-  PROM_CONF_DIR=/etc/prometheus
-  AM_CONF_DIR=/etc/prometheus/alertmanager
-  PROM_SVC=prometheus
-  AM_SVC=prometheus-alertmanager
-  GRAFANA_SVC=grafana-server
-}
-
 if [[ "$DISTRO_FAMILY" == "el" ]]; then
-  install_el
+  log "installing podman (dnf)"
+  dnf install -y podman
 else
-  install_ubuntu
+  log "installing podman (apt)"
+  apt-get update -y
+  apt-get install -y podman
+fi
+
+if ! podman --version | grep -qE 'podman version (4\.[4-9]|[5-9])' ; then
+  log "warning: podman version looks older than 4.4 -- Quadlet may not work. Check 'podman --version'."
 fi
 
 # ---------------------------------------------------------------------------
-# Deploy configuration
+# Deploy configuration + Quadlet units
 # ---------------------------------------------------------------------------
 log "deploying configuration"
 
@@ -220,44 +177,58 @@ for f in "$REPO_DIR"/config/prometheus/rules.d/*.yml; do
   deploy_managed "$f" "$PROM_CONF_DIR/rules.d/$(basename "$f")"
 done
 deploy_managed "$REPO_DIR/config/prometheus/targets.d/README.md" "$PROM_CONF_DIR/targets.d/README.md"
+mkdir -p /var/lib/prometheus
 
 mkdir -p "$AM_CONF_DIR"
 deploy_managed "$REPO_DIR/config/alertmanager/alertmanager.yml" "$AM_CONF_DIR/alertmanager.yml"
+mkdir -p /var/lib/alertmanager
 
-mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
+mkdir -p "$GRAFANA_CONF_DIR/provisioning/datasources" "$GRAFANA_CONF_DIR/provisioning/dashboards" /var/lib/grafana/dashboards
 deploy_managed "$REPO_DIR/config/grafana/provisioning/datasources/prometheus.yml" \
-  /etc/grafana/provisioning/datasources/prometheus.yml
+  "$GRAFANA_CONF_DIR/provisioning/datasources/prometheus.yml"
 deploy_managed "$REPO_DIR/config/grafana/provisioning/dashboards/local.yml" \
-  /etc/grafana/provisioning/dashboards/local.yml
+  "$GRAFANA_CONF_DIR/provisioning/dashboards/local.yml"
 deploy_managed "$REPO_DIR/config/grafana/dashboards/node-overview.json" \
   /var/lib/grafana/dashboards/node-overview.json
+
+log "deploying Quadlet units"
+mkdir -p "$QUADLET_DIR"
+for f in "$REPO_DIR"/config/containers/*; do
+  deploy_managed "$f" "$QUADLET_DIR/$(basename "$f")"
+done
 
 log "installing helper scripts"
 install -m 0755 "$REPO_DIR/scripts/add-exporter.sh" /usr/local/bin/monitoring-add-exporter
 install -m 0755 "$REPO_DIR/scripts/configure-email.sh" /usr/local/bin/monitoring-configure-email
 install -m 0755 "$REPO_DIR/scripts/add-dashboard.sh" /usr/local/bin/monitoring-add-dashboard
 
+log "reloading systemd (runs the Quadlet generator)"
+systemctl daemon-reload
+
 # ---------------------------------------------------------------------------
 # Validate configuration
 # ---------------------------------------------------------------------------
-validate_config() {
-  if command -v promtool >/dev/null 2>&1; then
-    log "validating prometheus config"
-    promtool check config "$PROM_CONF_DIR/prometheus.yml"
-    for f in "$PROM_CONF_DIR"/rules.d/*.yml; do
-      [[ -e "$f" ]] || continue
-      promtool check rules "$f"
-    done
-  else
-    log "warning: promtool not found, skipping prometheus config validation"
-  fi
+image_from_unit() {
+  grep '^Image=' "$QUADLET_DIR/$1" | head -1 | cut -d'=' -f2-
+}
 
-  if command -v amtool >/dev/null 2>&1; then
-    log "validating alertmanager config"
-    amtool check-config "$AM_CONF_DIR/alertmanager.yml"
-  else
-    log "warning: amtool not found, skipping alertmanager config validation"
-  fi
+validate_config() {
+  local prom_image am_image
+  prom_image="$(image_from_unit prometheus.container)"
+  am_image="$(image_from_unit alertmanager.container)"
+
+  log "validating prometheus config (via $prom_image)"
+  podman run --rm -v "$PROM_CONF_DIR:/etc/prometheus:ro,Z" --entrypoint promtool "$prom_image" \
+    check config /etc/prometheus/prometheus.yml
+  for f in "$PROM_CONF_DIR"/rules.d/*.yml; do
+    [[ -e "$f" ]] || continue
+    podman run --rm -v "$PROM_CONF_DIR:/etc/prometheus:ro,Z" --entrypoint promtool "$prom_image" \
+      check rules "/etc/prometheus/rules.d/$(basename "$f")"
+  done
+
+  log "validating alertmanager config (via $am_image)"
+  podman run --rm -v "$AM_CONF_DIR:/etc/alertmanager:ro,Z" --entrypoint amtool "$am_image" \
+    check-config /etc/alertmanager/alertmanager.yml
 }
 validate_config
 
@@ -265,14 +236,7 @@ validate_config
 # Start/enable services
 # ---------------------------------------------------------------------------
 start_services() {
-  local node_svc
-  if systemctl cat node_exporter >/dev/null 2>&1; then
-    node_svc="node_exporter"
-  else
-    node_svc="prometheus-node-exporter"
-  fi
-
-  for svc in "$PROM_SVC" "$AM_SVC" "$node_svc" "$GRAFANA_SVC"; do
+  for svc in metrics-network prometheus alertmanager node-exporter grafana; do
     log "enabling and starting $svc"
     systemctl enable --now "$svc"
   done
@@ -299,3 +263,4 @@ open_firewall
 log "done. Grafana: http://<host>:3000 (default admin/admin, change on first login)"
 log "Prometheus: http://<host>:9090   Alertmanager: http://<host>:9093"
 log "Next steps: monitoring-configure-email --help, monitoring-add-exporter --help, monitoring-add-dashboard --help"
+log "To bump a component's version: edit Image= in config/containers/<name>.container, commit, re-run this script."

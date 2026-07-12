@@ -1,0 +1,32 @@
+# managed by metrics-stack
+# Version control: bump the Image= tag below, commit, then
+# `sudo ./install.sh` (or `daemon-reload && systemctl restart node-exporter`)
+# to roll it out. Check https://hub.docker.com/r/prom/node-exporter/tags for
+# newer releases before bumping.
+#
+# Network=host (not the shared 'metrics' network) so node-exporter reports
+# the host's real network interfaces rather than a container's. It's reached
+# from Prometheus via host.containers.internal:9100 -- see
+# config/prometheus/prometheus.yml.
+[Unit]
+Description=Node Exporter
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/prom/node-exporter:v1.9.1
+ContainerName=node-exporter
+Network=host
+
+Volume=/proc:/host/proc:ro
+Volume=/sys:/host/sys:ro
+Volume=/:/host/root:ro
+
+Exec=--path.procfs=/host/proc --path.sysfs=/host/sys --path.rootfs=/host/root --web.listen-address=:9100 --collector.filesystem.mount-points-exclude=^/(host/)?(sys|proc|dev|run/containers/storage/.+)($|/)
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

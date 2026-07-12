@@ -3,10 +3,12 @@
 # Installed as: monitoring-configure-email
 #
 # Writes /etc/alertmanager/alertmanager.yml with SMTP settings, validates
-# with amtool, and restarts the Alertmanager service.
+# with amtool (run inside the pinned Alertmanager container image), and
+# restarts the alertmanager Quadlet service.
 set -euo pipefail
 
 CONFIG="/etc/alertmanager/alertmanager.yml"
+QUADLET_UNIT="/etc/containers/systemd/alertmanager.container"
 
 usage() {
   cat <<'EOF'
@@ -107,34 +109,24 @@ trap 'rm -f "$tmp"' EXIT
   echo "        send_resolved: true"
 } > "$tmp"
 
-if command -v amtool >/dev/null 2>&1; then
-  if ! amtool check-config "$tmp"; then
+if [[ -f "$QUADLET_UNIT" ]]; then
+  am_image="$(grep '^Image=' "$QUADLET_UNIT" | head -1 | cut -d'=' -f2-)"
+  if ! podman run --rm -v "$tmp:/tmp/alertmanager.yml:ro,Z" --entrypoint amtool "$am_image" \
+      check-config /tmp/alertmanager.yml; then
     echo "error: generated config failed amtool check-config, aborting" >&2
     exit 1
   fi
 else
-  echo "warning: amtool not found, skipping config validation" >&2
+  echo "warning: $QUADLET_UNIT not found, skipping config validation" >&2
 fi
 
-install -o root -g prometheus -m 0640 "$tmp" "$CONFIG" 2>/dev/null || {
-  # 'prometheus' group may not exist under all package layouts; fall back
-  install -o root -g root -m 0640 "$tmp" "$CONFIG"
-}
+# mode 0640 root:root on the host; the alertmanager.container Quadlet unit
+# mounts /etc/alertmanager with the ':U' flag, which chowns it to the
+# container's internal UID so alertmanager can still read it despite the
+# restrictive host permissions.
+install -o root -g root -m 0640 "$tmp" "$CONFIG"
 
 echo "wrote $CONFIG"
 
-svc=""
-for candidate in alertmanager prometheus-alertmanager; do
-  if systemctl cat "$candidate" >/dev/null 2>&1; then
-    svc="$candidate"
-    break
-  fi
-done
-
-if [[ -z "$svc" ]]; then
-  echo "error: could not find alertmanager service (tried: alertmanager, prometheus-alertmanager)" >&2
-  exit 1
-fi
-
-systemctl restart "$svc"
-echo "restarted $svc"
+systemctl restart alertmanager
+echo "restarted alertmanager"

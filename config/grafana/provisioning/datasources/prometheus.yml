@@ -6,6 +6,9 @@ datasources:
     type: prometheus
     access: proxy
     uid: prometheus
-    url: http://localhost:9090
+    # 'prometheus' resolves via the shared 'metrics' Podman network
+    # (see config/containers/metrics.network) -- Grafana and Prometheus
+    # run in separate containers.
+    url: http://prometheus:9090
     isDefault: true
     editable: true
