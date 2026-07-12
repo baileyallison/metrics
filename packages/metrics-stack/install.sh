@@ -187,6 +187,7 @@ mkdir -p /var/lib/prometheus
 
 mkdir -p "$AM_CONF_DIR"
 deploy_managed "$REPO_DIR/alertmanager/alertmanager.yml" "$AM_CONF_DIR/alertmanager.yml"
+chmod 0640 "$AM_CONF_DIR/alertmanager.yml"
 mkdir -p /var/lib/alertmanager
 
 mkdir -p "$GRAFANA_CONF_DIR/provisioning/datasources" "$GRAFANA_CONF_DIR/provisioning/dashboards" /var/lib/grafana/dashboards
@@ -231,7 +232,12 @@ validate_config() {
   done
 
   log "validating alertmanager config (via $am_image)"
-  podman run --rm -v "$AM_CONF_DIR:/etc/alertmanager:ro,Z" --entrypoint amtool "$am_image" \
+  # ,U: matches the alertmanager.container Quadlet unit's own mount -- the
+  # config directory (and alertmanager.yml specifically, mode 0640 root:root
+  # once deployed via monitoring-configure-email) needs chowning to the
+  # container's non-root UID or the image's own 'nobody' user can't read it,
+  # even just for this one-off validation run.
+  podman run --rm -v "$AM_CONF_DIR:/etc/alertmanager:ro,Z,U" --entrypoint amtool "$am_image" \
     check-config /etc/alertmanager/alertmanager.yml
 }
 validate_config

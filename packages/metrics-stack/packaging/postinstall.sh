@@ -32,7 +32,11 @@ if command -v podman >/dev/null 2>&1; then
   done
 
   log "validating alertmanager config (via $am_image)"
-  podman run --rm -v "$AM_CONF_DIR:/etc/alertmanager:ro,Z" --entrypoint amtool "$am_image" \
+  # ,U: matches the alertmanager.container Quadlet unit's own mount -- the
+  # config directory (and alertmanager.yml specifically, mode 0640 root:root)
+  # needs chowning to the container's non-root UID or the image's own
+  # 'nobody' user can't read it, even just for this one-off validation run.
+  podman run --rm -v "$AM_CONF_DIR:/etc/alertmanager:ro,Z,U" --entrypoint amtool "$am_image" \
     check-config /etc/alertmanager/alertmanager.yml
 else
   log "warning: podman not found on PATH -- this package depends on it, check the install"
