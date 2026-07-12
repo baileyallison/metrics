@@ -107,8 +107,12 @@ jobs:
           data = json.load(sys.stdin)
           active = data['data']['activeTargets']
           for t in active:
-              print(t['scrapePool'], t['scrapeUrl'], t['health'], t.get('lastError') or '')
-          jobs = {t['scrapePool'] for t in active}
+              print(t['scrapePool'], t['labels'].get('job'), t['scrapeUrl'], t['health'], t.get('lastError') or '')
+          # scrapePool is always the scrape_config's job_name ('file-sd' for
+          # every file_sd-discovered target) -- the per-exporter job name
+          # set by monitoring-add-exporter's 'labels: {job: ...}' shows up
+          # in the resolved labels, not scrapePool.
+          jobs = {t['labels'].get('job') for t in active}
           up = [t for t in active if t['health'] == 'up']
           print(f'{len(up)}/{len(active)} targets up, jobs: {sorted(jobs)}')
           assert 'node' in jobs, 'node-exporter did not auto-register into targets.d'
