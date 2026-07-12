@@ -42,15 +42,33 @@ jobs:
 
       - name: Check Prometheus targets are up
         run: |
-          curl -fsS http://localhost:9090/api/v1/targets | python3 -c "
+          # Retries for up to ~75s: right after the health-endpoint check
+          # passes, Prometheus may not have completed its first scrape of
+          # every target yet (scrape_interval is 15s).
+          success=0
+          for i in $(seq 1 15); do
+            result="$(curl -fsS http://localhost:9090/api/v1/targets)"
+            if echo "$result" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
           active = data['data']['activeTargets']
+          for t in active:
+              print(t['scrapePool'], t['scrapeUrl'], t['health'], t.get('lastError') or '')
           up = [t for t in active if t['health'] == 'up']
           print(f'{len(up)}/{len(active)} targets up')
           assert len(active) >= 3, f'expected at least 3 targets, got {len(active)}'
           assert len(up) == len(active), 'not all targets are up'
-          "
+          "; then
+              success=1
+              break
+            fi
+            echo "not all targets up yet, retrying..."
+            sleep 5
+          done
+          if [ "$success" != "1" ]; then
+            echo "targets did not all become healthy within the retry window"
+            exit 1
+          fi
 
       - name: Check Prometheus alerting rules loaded
         run: |
