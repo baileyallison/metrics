@@ -7,6 +7,6 @@
 # it isn't owned by the package manifest, so it survives removal either way.
 set -e
 
-for svc in grafana node-exporter alertmanager prometheus metrics-network; do
+for svc in grafana alertmanager prometheus metrics-network; do
   systemctl stop "$svc" 2>/dev/null || true
 done

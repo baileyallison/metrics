@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Installs/updates the metrics-stack: Prometheus, Alertmanager, Grafana, and
-# node_exporter, each running as a Podman container managed by a systemd
-# Quadlet unit. Works on Rocky Linux 9+ (and other EL9+ distros) and Ubuntu
-# 24.04+ (and other Debian-family distros with apt) -- both ship a Podman
-# new enough for Quadlet (4.4+) directly in their default repos.
+# Installs/updates the metrics-stack base: Prometheus, Alertmanager, and
+# Grafana, each running as a Podman container managed by a systemd Quadlet
+# unit. Works on Rocky Linux 9+ (and other EL9+ distros) and Ubuntu 24.04+
+# (and other Debian-family distros with apt) -- both ship a Podman new
+# enough for Quadlet (4.4+) directly in their default repos.
 #
-# Only Podman itself comes from dnf/apt; Prometheus/Alertmanager/Grafana/
-# node_exporter versions are controlled by the Image= tags in
-# config/containers/*.container, which are tracked in this git repo. To
-# upgrade one of them: bump its tag, commit, and re-run this script (or just
+# This installs the base only -- no exporters. Add node_exporter,
+# smartctl_exporter, etc. via their own separate packages/install scripts
+# under ../metrics-stack-exporter-*/, which register themselves into this
+# host's targets.d automatically if run on the same box.
+#
+# Only Podman itself comes from dnf/apt; Prometheus/Alertmanager/Grafana
+# versions are controlled by the Image= tags in containers/*.container,
+# tracked in this git repo. To upgrade one of them: bump its tag, commit,
+# and re-run this script (or just
 # `systemctl daemon-reload && systemctl restart <service>`).
 #
 # Safe to re-run: existing local edits to deployed configs/units are left
@@ -33,8 +38,9 @@ Usage: sudo ./install.sh [--force-config]
 
 Installs Podman via the system package manager (dnf on EL, apt on Ubuntu/
 Debian), deploys Quadlet unit files and default configuration for
-Prometheus, Alertmanager, Grafana, and node_exporter, validates the
-configs, and starts the containers as systemd services.
+Prometheus, Alertmanager, and Grafana, validates the configs, and starts
+the containers as systemd services. Exporters are separate packages --
+see ../metrics-stack-exporter-*/.
 
   --force-config   Overwrite locally-modified managed configs/units with the
                     versions shipped in this repo (backups are still made).
@@ -171,36 +177,34 @@ fi
 # ---------------------------------------------------------------------------
 log "deploying configuration"
 
-deploy_managed "$REPO_DIR/config/prometheus/prometheus.yml" "$PROM_CONF_DIR/prometheus.yml"
+deploy_managed "$REPO_DIR/prometheus/prometheus.yml" "$PROM_CONF_DIR/prometheus.yml"
 mkdir -p "$PROM_CONF_DIR/rules.d" "$PROM_CONF_DIR/targets.d"
-for f in "$REPO_DIR"/config/prometheus/rules.d/*.yml; do
+for f in "$REPO_DIR"/prometheus/rules.d/*.yml; do
   deploy_managed "$f" "$PROM_CONF_DIR/rules.d/$(basename "$f")"
 done
-deploy_managed "$REPO_DIR/config/prometheus/targets.d/README.md" "$PROM_CONF_DIR/targets.d/README.md"
+deploy_managed "$REPO_DIR/prometheus/targets.d/README.md" "$PROM_CONF_DIR/targets.d/README.md"
 mkdir -p /var/lib/prometheus
 
 mkdir -p "$AM_CONF_DIR"
-deploy_managed "$REPO_DIR/config/alertmanager/alertmanager.yml" "$AM_CONF_DIR/alertmanager.yml"
+deploy_managed "$REPO_DIR/alertmanager/alertmanager.yml" "$AM_CONF_DIR/alertmanager.yml"
 mkdir -p /var/lib/alertmanager
 
 mkdir -p "$GRAFANA_CONF_DIR/provisioning/datasources" "$GRAFANA_CONF_DIR/provisioning/dashboards" /var/lib/grafana/dashboards
-deploy_managed "$REPO_DIR/config/grafana/provisioning/datasources/prometheus.yml" \
+deploy_managed "$REPO_DIR/grafana/provisioning/datasources/prometheus.yml" \
   "$GRAFANA_CONF_DIR/provisioning/datasources/prometheus.yml"
-deploy_managed "$REPO_DIR/config/grafana/provisioning/dashboards/local.yml" \
+deploy_managed "$REPO_DIR/grafana/provisioning/dashboards/local.yml" \
   "$GRAFANA_CONF_DIR/provisioning/dashboards/local.yml"
-deploy_managed "$REPO_DIR/config/grafana/dashboards/node-overview.json" \
-  /var/lib/grafana/dashboards/node-overview.json
 
 log "deploying Quadlet units"
 mkdir -p "$QUADLET_DIR"
-for f in "$REPO_DIR"/config/containers/*; do
+for f in "$REPO_DIR"/containers/*; do
   deploy_managed "$f" "$QUADLET_DIR/$(basename "$f")"
 done
 
 log "installing helper scripts"
-install -m 0755 "$REPO_DIR/scripts/add-exporter.sh" /usr/local/bin/monitoring-add-exporter
-install -m 0755 "$REPO_DIR/scripts/configure-email.sh" /usr/local/bin/monitoring-configure-email
-install -m 0755 "$REPO_DIR/scripts/add-dashboard.sh" /usr/local/bin/monitoring-add-dashboard
+install -m 0755 "$REPO_DIR/scripts/add-exporter.sh" /usr/bin/monitoring-add-exporter
+install -m 0755 "$REPO_DIR/scripts/configure-email.sh" /usr/bin/monitoring-configure-email
+install -m 0755 "$REPO_DIR/scripts/add-dashboard.sh" /usr/bin/monitoring-add-dashboard
 
 log "reloading systemd (runs the Quadlet generator)"
 systemctl daemon-reload
@@ -241,7 +245,7 @@ start_services() {
   # They're already wired to start at boot: Quadlet reads each unit's
   # [Install] WantedBy= at generation time and creates the .wants symlink
   # itself. So we only need to start them now, not enable them.
-  for svc in metrics-network prometheus alertmanager node-exporter grafana; do
+  for svc in metrics-network prometheus alertmanager grafana; do
     log "starting $svc"
     systemctl start "$svc"
   done
@@ -267,5 +271,6 @@ open_firewall
 
 log "done. Grafana: http://<host>:3000 (default admin/admin, change on first login)"
 log "Prometheus: http://<host>:9090   Alertmanager: http://<host>:9093"
+log "No exporters installed yet -- see ../metrics-stack-exporter-node/ etc."
 log "Next steps: monitoring-configure-email --help, monitoring-add-exporter --help, monitoring-add-dashboard --help"
-log "To bump a component's version: edit Image= in config/containers/<name>.container, commit, re-run this script."
+log "To bump a component's version: edit Image= in containers/<name>.container, commit, re-run this script."

@@ -4,10 +4,12 @@
 # to roll it out. Check https://hub.docker.com/r/prom/node-exporter/tags for
 # newer releases before bumping.
 #
-# Network=host (not the shared 'metrics' network) so node-exporter reports
-# the host's real network interfaces rather than a container's. It's reached
-# from Prometheus via host.containers.internal:9100 -- see
-# config/prometheus/prometheus.yml.
+# Network=host (not the metrics-stack base's shared 'metrics' network,
+# which this package doesn't require or depend on) so node-exporter reports
+# the host's real network interfaces rather than a container's, and so this
+# package installs standalone on any host you want metrics from -- with or
+# without the metrics-stack base package present locally. See
+# packaging/postinstall.sh for how it registers itself with Prometheus.
 [Unit]
 Description=Node Exporter
 After=network-online.target

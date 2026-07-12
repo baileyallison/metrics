@@ -38,7 +38,7 @@ else
   log "warning: podman not found on PATH -- this package depends on it, check the install"
 fi
 
-for svc in metrics-network prometheus alertmanager node-exporter grafana; do
+for svc in metrics-network prometheus alertmanager grafana; do
   log "restarting $svc"
   systemctl restart "$svc"
 done
@@ -53,4 +53,5 @@ elif command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; th
 fi
 
 log "done. Grafana: http://<host>:3000 (default admin/admin, change on first login)"
+log "No exporters installed yet -- see the metrics-stack-exporter-* packages"
 log "Next: monitoring-configure-email --help, monitoring-add-exporter --help, monitoring-add-dashboard --help"

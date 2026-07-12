@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Builds metrics-stack.rpm and metrics-stack.deb from this repo's contents
-# using fpm. Requires: fpm (gem install fpm), plus rpm-build tools if
+# Builds a .rpm and .deb for every package under packages/*/, using fpm.
+# Each package directory must have a packaging/manifest.sh describing what
+# to ship (see any packages/*/packaging/manifest.sh for the format).
+#
+# Requires: fpm (gem install --no-document fpm), plus rpm-build tools if
 # building the .rpm on a non-EL host, and dpkg-deb (present on any Debian-
 # family system) for the .deb.
 #
@@ -17,92 +20,93 @@ if ! command -v fpm >/dev/null 2>&1; then
   exit 1
 fi
 
-STAGE="$(mktemp -d)"
-trap 'rm -rf "$STAGE"' EXIT
-
 mkdir -p "$OUT_DIR"
 
-# -----------------------------------------------------------------------
-# Stage the target filesystem tree with correct permissions. fpm preserves
-# whatever mode the source file has, so we set it here rather than relying
-# on git's checked-out permissions.
-# -----------------------------------------------------------------------
-install -D -m 0644 "$REPO_DIR/config/containers/metrics.network" \
-  "$STAGE/etc/containers/systemd/metrics.network"
-install -D -m 0644 "$REPO_DIR/config/containers/prometheus.container" \
-  "$STAGE/etc/containers/systemd/prometheus.container"
-install -D -m 0644 "$REPO_DIR/config/containers/alertmanager.container" \
-  "$STAGE/etc/containers/systemd/alertmanager.container"
-install -D -m 0644 "$REPO_DIR/config/containers/grafana.container" \
-  "$STAGE/etc/containers/systemd/grafana.container"
-install -D -m 0644 "$REPO_DIR/config/containers/node-exporter.container" \
-  "$STAGE/etc/containers/systemd/node-exporter.container"
+build_package() {
+  local pkg_dir="$1"
 
-install -D -m 0644 "$REPO_DIR/config/prometheus/prometheus.yml" \
-  "$STAGE/etc/prometheus/prometheus.yml"
-install -D -m 0644 "$REPO_DIR/config/prometheus/rules.d/host-alerts.yml" \
-  "$STAGE/etc/prometheus/rules.d/host-alerts.yml"
-install -D -m 0644 "$REPO_DIR/config/prometheus/rules.d/stack-alerts.yml" \
-  "$STAGE/etc/prometheus/rules.d/stack-alerts.yml"
-install -D -m 0644 "$REPO_DIR/config/prometheus/targets.d/README.md" \
-  "$STAGE/etc/prometheus/targets.d/README.md"
+  # Reset manifest variables so nothing leaks between packages in this loop.
+  PKG_NAME=""
+  PKG_DESCRIPTION=""
+  PKG_DEPENDS=()
+  PKG_FILES=()
+  PKG_CONFIG_FILES=()
+  PKG_DIRECTORIES=()
+  PKG_POSTINSTALL=""
+  PKG_PREREMOVE=""
+  # shellcheck disable=SC1090
+  source "$pkg_dir/packaging/manifest.sh"
 
-# Holds SMTP credentials once monitoring-configure-email runs -- root-only.
-install -D -m 0640 "$REPO_DIR/config/alertmanager/alertmanager.yml" \
-  "$STAGE/etc/alertmanager/alertmanager.yml"
+  echo "=== building $PKG_NAME ==="
 
-install -D -m 0644 "$REPO_DIR/config/grafana/provisioning/datasources/prometheus.yml" \
-  "$STAGE/etc/grafana/provisioning/datasources/prometheus.yml"
-install -D -m 0644 "$REPO_DIR/config/grafana/provisioning/dashboards/local.yml" \
-  "$STAGE/etc/grafana/provisioning/dashboards/local.yml"
-install -D -m 0644 "$REPO_DIR/config/grafana/dashboards/node-overview.json" \
-  "$STAGE/var/lib/grafana/dashboards/node-overview.json"
+  local stage
+  stage="$(mktemp -d)"
+  trap 'rm -rf "$stage"' RETURN
 
-# Package-managed convention: /usr/bin, not /usr/local/bin (reserved for
-# admin-installed, unmanaged software).
-install -D -m 0755 "$REPO_DIR/scripts/add-exporter.sh" "$STAGE/usr/bin/monitoring-add-exporter"
-install -D -m 0755 "$REPO_DIR/scripts/configure-email.sh" "$STAGE/usr/bin/monitoring-configure-email"
-install -D -m 0755 "$REPO_DIR/scripts/add-dashboard.sh" "$STAGE/usr/bin/monitoring-add-dashboard"
+  local entry mode rest src dest
+  for entry in "${PKG_FILES[@]}"; do
+    mode="${entry%%:*}"
+    rest="${entry#*:}"
+    src="${rest%%:*}"
+    dest="${rest#*:}"
+    install -D -m "$mode" "$pkg_dir/$src" "$stage$dest"
+  done
 
-mkdir -p "$STAGE/var/lib/prometheus" "$STAGE/var/lib/alertmanager"
+  local d
+  for d in "${PKG_DIRECTORIES[@]}"; do
+    mkdir -p "$stage$d"
+  done
 
-COMMON_ARGS=(
-  -s dir
-  -n metrics-stack
-  -v "$VERSION"
-  --iteration "$ITERATION"
-  --license GPL-3.0
-  --url "https://github.com/baileyallison/metrics"
-  --description "Prometheus/Alertmanager/Grafana monitoring stack (Podman Quadlet containers)"
-  --after-install "$REPO_DIR/packaging/scripts/postinstall.sh"
-  --before-remove "$REPO_DIR/packaging/scripts/preremove.sh"
-  --depends podman
-  --config-files /etc/containers/systemd/metrics.network
-  --config-files /etc/containers/systemd/prometheus.container
-  --config-files /etc/containers/systemd/alertmanager.container
-  --config-files /etc/containers/systemd/grafana.container
-  --config-files /etc/containers/systemd/node-exporter.container
-  --config-files /etc/prometheus/prometheus.yml
-  --config-files /etc/prometheus/rules.d/host-alerts.yml
-  --config-files /etc/prometheus/rules.d/stack-alerts.yml
-  --config-files /etc/alertmanager/alertmanager.yml
-  --config-files /etc/grafana/provisioning/datasources/prometheus.yml
-  --config-files /etc/grafana/provisioning/dashboards/local.yml
-  --config-files /var/lib/grafana/dashboards/node-overview.json
-  --directories /var/lib/prometheus
-  --directories /var/lib/alertmanager
-  --chdir "$STAGE"
-)
+  local common_args=(
+    -s dir
+    -n "$PKG_NAME"
+    -v "$VERSION"
+    --iteration "$ITERATION"
+    --license GPL-3.0
+    --url "https://github.com/baileyallison/metrics"
+    --description "$PKG_DESCRIPTION"
+    --chdir "$stage"
+  )
 
-echo "==> building rpm"
-fpm "${COMMON_ARGS[@]}" -t rpm -a noarch \
-  -p "$OUT_DIR/metrics-stack-${VERSION}-${ITERATION}.noarch.rpm" \
-  etc usr var
+  local dep
+  for dep in "${PKG_DEPENDS[@]:-}"; do
+    [[ -n "$dep" ]] && common_args+=(--depends "$dep")
+  done
 
-echo "==> building deb"
-fpm "${COMMON_ARGS[@]}" -t deb -a all \
-  -p "$OUT_DIR/metrics-stack_${VERSION}-${ITERATION}_all.deb" \
-  etc usr var
+  local cf
+  for cf in "${PKG_CONFIG_FILES[@]:-}"; do
+    [[ -n "$cf" ]] && common_args+=(--config-files "$cf")
+  done
 
-echo "==> built:"
+  if [[ -n "$PKG_POSTINSTALL" ]]; then
+    common_args+=(--after-install "$pkg_dir/$PKG_POSTINSTALL")
+  fi
+  if [[ -n "$PKG_PREREMOVE" ]]; then
+    common_args+=(--before-remove "$pkg_dir/$PKG_PREREMOVE")
+  fi
+
+  # fpm needs at least one input path -- pass whichever top-level FHS dirs
+  # actually got staged for this package.
+  local inputs=()
+  local top
+  for top in etc usr var; do
+    [[ -d "$stage/$top" ]] && inputs+=("$top")
+  done
+
+  echo "--- rpm ---"
+  fpm "${common_args[@]}" -t rpm -a noarch \
+    -p "$OUT_DIR/${PKG_NAME}-${VERSION}-${ITERATION}.noarch.rpm" \
+    "${inputs[@]}"
+
+  echo "--- deb ---"
+  fpm "${common_args[@]}" -t deb -a all \
+    -p "$OUT_DIR/${PKG_NAME}_${VERSION}-${ITERATION}_all.deb" \
+    "${inputs[@]}"
+}
+
+for pkg_dir in "$REPO_DIR"/packages/*/; do
+  build_package "${pkg_dir%/}"
+done
+
+echo "=== built: ==="
 ls -la "$OUT_DIR"

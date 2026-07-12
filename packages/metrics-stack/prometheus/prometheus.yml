@@ -12,7 +12,7 @@ alerting:
   alertmanagers:
     - static_configs:
         # 'alertmanager' resolves via the shared 'metrics' Podman network
-        # (see config/containers/metrics.network).
+        # (see packages/metrics-stack/containers/metrics.network).
         - targets:
             - alertmanager:9093
 
@@ -25,17 +25,12 @@ scrape_configs:
     static_configs:
       - targets: ["alertmanager:9093"]
 
-  - job_name: node
-    static_configs:
-      # node-exporter runs with Network=host (it needs the host's real
-      # network/proc/sys view), so it isn't on the 'metrics' bridge network.
-      # host.containers.internal resolves to the host from bridge-networked
-      # containers on Podman 4.7+.
-      - targets: ["host.containers.internal:9100"]
-
-  # Drop-in target discovery: add/remove files under targets.d/ to add or
-  # remove exporters without editing this file or restarting Prometheus.
-  # See targets.d/README.md and `monitoring-add-exporter --help`.
+  # Every exporter -- including this stack's own node_exporter and
+  # smartctl_exporter packages -- registers itself here rather than being
+  # hardcoded above. Drop-in target discovery: add/remove files under
+  # targets.d/ to add or remove exporters without editing this file or
+  # restarting Prometheus. See targets.d/README.md and
+  # `monitoring-add-exporter --help`.
   - job_name: file-sd
     file_sd_configs:
       - files:

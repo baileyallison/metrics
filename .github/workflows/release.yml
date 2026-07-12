@@ -6,24 +6,65 @@ on:
       - 'v*'
 
 jobs:
-  smoke-test:
-    # GitHub-hosted runners are full VMs with systemd as PID 1 (unlike a
-    # container-based CI executor), so we can actually install Podman,
-    # deploy the real Quadlet units, and hit live HTTP endpoints here --
-    # this is a real end-to-end test, not just a syntax check.
+  build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install podman
+      - name: Install fpm and package build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y podman
+          sudo apt-get install -y ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
 
-      - name: Run installer
-        run: sudo ./install.sh
+      - name: Determine version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for services to become healthy
+      - name: Build packages
+        run: ./packaging/build.sh "${{ steps.version.outputs.version }}"
+
+      - name: Sanity-check rpm contents
+        run: |
+          for f in dist/*.rpm; do
+            echo "=== $f ==="
+            rpm -qlp "$f"
+          done
+
+      - name: Upload packages as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: dist/*
+          if-no-files-found: error
+
+  smoke-test:
+    # GitHub-hosted runners are full VMs with systemd as PID 1 (unlike a
+    # container-based CI executor), so we can install the actual built .deb
+    # packages, let apt resolve their real Depends: podman, and hit live
+    # HTTP endpoints -- this exercises the real shipped artifact, not just
+    # the raw install script.
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      - name: Install base package
+        run: |
+          sudo apt-get update
+          sudo apt install -y ./dist/metrics-stack_*.deb
+
+      - name: Install exporter and dashboard packages
+        run: |
+          sudo apt install -y ./dist/metrics-stack-exporter-node_*.deb
+          sudo apt install -y ./dist/metrics-stack-exporter-smartctl_*.deb
+          sudo apt install -y ./dist/metrics-stack-dashboards-node_*.deb
+
+      - name: Wait for base services to become healthy
         run: |
           ok=0
           for i in $(seq 1 60); do
@@ -31,20 +72,33 @@ jobs:
             curl -fsS http://localhost:9090/-/healthy >/dev/null 2>&1 || ok=0
             curl -fsS http://localhost:9093/-/healthy >/dev/null 2>&1 || ok=0
             curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 || ok=0
-            curl -fsS http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
             [ "$ok" = "1" ] && break
             sleep 3
           done
           if [ "$ok" != "1" ]; then
-            echo "services did not become healthy in time"
+            echo "base services did not become healthy in time"
             exit 1
           fi
 
-      - name: Check Prometheus targets are up
+      - name: Wait for exporters to respond
         run: |
-          # Retries for up to ~75s: right after the health-endpoint check
-          # passes, Prometheus may not have completed its first scrape of
-          # every target yet (scrape_interval is 15s).
+          ok=0
+          for i in $(seq 1 30); do
+            ok=1
+            curl -fsS http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
+            curl -fsS http://localhost:9633/metrics >/dev/null 2>&1 || ok=0
+            [ "$ok" = "1" ] && break
+            sleep 3
+          done
+          if [ "$ok" != "1" ]; then
+            echo "exporters did not respond in time"
+            exit 1
+          fi
+
+      - name: Check exporters auto-registered and all targets are up
+        run: |
+          # Retries for up to ~75s: file_sd's refresh_interval is 30s, plus
+          # a scrape_interval (15s) before a newly-registered target shows up.
           success=0
           for i in $(seq 1 15); do
             result="$(curl -fsS http://localhost:9090/api/v1/targets)"
@@ -54,15 +108,17 @@ jobs:
           active = data['data']['activeTargets']
           for t in active:
               print(t['scrapePool'], t['scrapeUrl'], t['health'], t.get('lastError') or '')
+          jobs = {t['scrapePool'] for t in active}
           up = [t for t in active if t['health'] == 'up']
-          print(f'{len(up)}/{len(active)} targets up')
-          assert len(active) >= 3, f'expected at least 3 targets, got {len(active)}'
+          print(f'{len(up)}/{len(active)} targets up, jobs: {sorted(jobs)}')
+          assert 'node' in jobs, 'node-exporter did not auto-register into targets.d'
+          assert 'smartctl' in jobs, 'smartctl-exporter did not auto-register into targets.d'
           assert len(up) == len(active), 'not all targets are up'
           "; then
               success=1
               break
             fi
-            echo "not all targets up yet, retrying..."
+            echo "not all targets registered/up yet, retrying..."
             sleep 5
           done
           if [ "$success" != "1" ]; then
@@ -81,35 +137,45 @@ jobs:
           assert total >= 8, f'expected at least 8 rules, got {total}'
           "
 
+      - name: Check starter dashboard was provisioned
+        run: |
+          sleep 5
+          curl -fsS -u admin:admin "http://localhost:3000/api/search?query=Node%20Overview" | python3 -c "
+          import json, sys
+          results = json.load(sys.stdin)
+          print(results)
+          assert any('Node Overview' in r.get('title', '') for r in results), 'starter dashboard not found'
+          "
+
+      - name: Uninstall an exporter and confirm target cleanup
+        run: |
+          sudo apt remove -y metrics-stack-exporter-node
+          sleep 2
+          if [ -f /etc/prometheus/targets.d/node.yml ]; then
+            echo "node.yml target file was not cleaned up on removal"
+            exit 1
+          fi
+
       - name: Dump logs on failure
         if: failure()
         run: |
-          for svc in metrics-network prometheus alertmanager node-exporter grafana; do
+          for svc in metrics-network prometheus alertmanager grafana node-exporter smartctl-exporter; do
             echo "=== $svc ==="
             sudo systemctl status "$svc" --no-pager || true
             sudo journalctl -u "$svc" --no-pager | tail -50 || true
           done
 
-  build:
+  release:
     needs: smoke-test
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install fpm and package build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential rpm
-          sudo gem install --no-document fpm
-
-      - name: Determine version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build packages
-        run: ./packaging/build.sh "${{ steps.version.outputs.version }}"
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2

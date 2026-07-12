@@ -1,61 +1,83 @@
 # metrics
 
 A metrics and monitoring stack for Rocky Linux 9+ and Ubuntu 24.04+: Prometheus,
-Alertmanager (email alerts), Grafana, and node_exporter, each running as a
-Podman container managed by a systemd [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
+Alertmanager (email alerts), and Grafana as a base package, plus separate
+exporter and dashboard packages you add only where you need them. Every
+component runs as a Podman container managed by a systemd
+[Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
 unit.
 
-Only Podman itself comes from `dnf`/`apt`. Prometheus/Alertmanager/Grafana/
-node_exporter versions are pinned by the `Image=` tag in each
-`config/containers/*.container` file, tracked in this git repo — see
-[Upgrading](#upgrading).
+## Packages
+
+| Package | What it is | Depends on |
+|---|---|---|
+| `metrics-stack` | Prometheus + Alertmanager + Grafana (the base) | Podman |
+| `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **not** the base |
+| `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **not** the base |
+| `metrics-stack-dashboards-node` | Starter "Node Overview" Grafana dashboard | nothing (pure data) |
+
+Exporter packages are standalone by design: install `metrics-stack-exporter-node`
+on any host you want metrics from — a database server, a NAS, a laptop — with
+or without `metrics-stack` itself present on that same host. If the base
+happens to be installed locally, the exporter's postinstall auto-registers
+itself with Prometheus; otherwise it prints the one-liner to run on your
+Prometheus server instead. Dashboard packages are the same pattern used by
+things like `ceph-grafana-dashboards`: inert files that are useful *with* a
+Grafana around, but don't require one to install.
 
 ## Quick start
 
-**Option A: install a release package (recommended).** Every tagged release
-is built and smoke-tested in CI (see [Releasing](#releasing)), producing a
-`.rpm` and a `.deb` attached to the [GitHub Release](../../releases):
+**Option A: install release packages (recommended).** Every tagged release
+is built and smoke-tested end-to-end in CI (see [Releasing](#releasing)),
+producing `.rpm`s and `.deb`s attached to the [GitHub Release](../../releases):
 
 ```
-# Rocky/RHEL/Alma
+# on your monitoring server (Rocky/RHEL/Alma)
 sudo dnf install ./metrics-stack-<version>-1.noarch.rpm
 
-# Ubuntu/Debian
+# on your monitoring server (Ubuntu/Debian)
 sudo apt install ./metrics-stack_<version>-1_all.deb
+
+# on that same box, or any other host you want metrics from:
+sudo apt install ./metrics-stack-exporter-node_<version>-1_all.deb
+sudo apt install ./metrics-stack-exporter-smartctl_<version>-1_all.deb
+
+# on your monitoring server, once you have exporters registered:
+sudo apt install ./metrics-stack-dashboards-node_<version>-1_all.deb
 ```
 
-Podman is pulled in automatically as a dependency; the package's post-install
-step deploys the Quadlet units, validates config, and starts everything —
-same end state as Option B below, just via `dnf`/`apt` instead of a shell
-script, with proper `%config(noreplace)`/conffile handling for local edits
-and a clean `dnf remove`/`apt remove` for uninstall (your data under
-`/var/lib/{prometheus,alertmanager,grafana}` isn't part of the package and
-survives removal either way).
+Podman is pulled in as a dependency automatically; each package's
+post-install step deploys its Quadlet unit(s), validates config where
+applicable, and starts everything. Real `%config(noreplace)`/conffile
+handling means local edits survive upgrades, and `dnf remove`/`apt remove`
+cleanly uninstalls (your data under `/var/lib/{prometheus,alertmanager,grafana}`
+isn't part of any package manifest, so it survives removal either way).
 
-**Option B: install from source.**
+**Option B: install the base from source** (exporters/dashboards are
+package-only — see [Why no from-source exporters](#why-no-from-source-installer-for-exportersdashboards)):
 
 ```
 git clone <this repo>
 cd metrics
-sudo ./install.sh
+sudo ./packages/metrics-stack/install.sh
 ```
 
-This detects your distro, installs Podman, deploys the Quadlet units and
-default configuration, validates it, and starts everything. Useful for
-trying out unreleased changes, or if you'd rather not fetch a prebuilt
-package. Re-running `./install.sh` is safe — it's idempotent. Locally-edited
-managed configs/units are left alone; pass `--force-config` to overwrite them
-with the versions shipped in this repo (a timestamped backup is made first).
+Useful for trying out unreleased changes to the base, or if you'd rather not
+fetch a prebuilt package. Re-running it is safe — it's idempotent.
+Locally-edited managed configs/units are left alone; pass `--force-config`
+to overwrite them with the versions shipped in this repo (a timestamped
+backup is made first).
 
-**Either way**, once installed:
+**Either way**, once the base is installed:
 
 - Grafana: `http://<host>:3000` (default login `admin`/`admin`, change on first login)
 - Prometheus: `http://<host>:9090`
 - Alertmanager: `http://<host>:9093`
 
-Only port 3000 (Grafana) is opened on the firewall by default; Prometheus and
-Alertmanager are reachable on the host but not punched through the firewall,
-on the assumption you'll browse them through Grafana or over SSH tunnel/VPN.
+Only Grafana's port (3000) is opened on the firewall by default for the base
+package; each exporter package opens its own port (e.g. 9100 for
+node_exporter). Prometheus/Alertmanager stay off the firewall on the
+assumption you'll browse them through Grafana or over SSH tunnel/VPN.
 
 ## Why containers instead of native packages
 
@@ -71,16 +93,25 @@ Running each component as a Podman container pinned to an explicit image tag
 fixes both: the version you get is exactly the version named in this repo
 regardless of distro or how current its package repos are, and the
 Quadlet-generated systemd unit names (`prometheus.service`,
-`alertmanager.service`, `grafana.service`, `node-exporter.service`) are
+`alertmanager.service`, `grafana.service`, `node-exporter.service`, etc.) are
 identical on both distros. The trade-off is that `dnf upgrade`/`apt upgrade`
-now only patches Podman and the OS — bumping Prometheus/Grafana/Alertmanager/
-node_exporter versions is a one-line edit in this repo instead (see below),
-which is also exactly what "version control over the container version"
-means in practice.
+now only patches Podman and the OS — bumping a component's version is a
+one-line edit + a new package release instead (see
+[Upgrading](#upgrading)), which is also exactly what "version control over
+the container version" means in practice.
 
 **Ubuntu 22.04 note:** its default Podman package (3.4.4) predates Quadlet,
 which needs Podman 4.4+. Ubuntu 24.04's default `universe` Podman (4.9.3)
-clears that bar, so this stack now targets 24.04+ rather than 22.04+.
+clears that bar, so this stack targets 24.04+ rather than 22.04+.
+
+## Why no from-source installer for exporters/dashboards
+
+The base package still ships `packages/metrics-stack/install.sh` for
+git-clone/dev use. Exporter and dashboard packages don't have an equivalent
+script — they're small enough, and the whole point of splitting them out is
+fleet-wide distribution (install the same `.rpm`/`.deb` on many hosts), not
+a per-host git clone. Build them with `packaging/build.sh` (see
+[Releasing](#releasing)) or grab a tagged release.
 
 ## Upgrading
 
@@ -91,46 +122,53 @@ sudo dnf upgrade                       # Rocky/RHEL/Alma
 sudo apt update && sudo apt upgrade    # Ubuntu/Debian
 ```
 
-**Prometheus, Alertmanager, Grafana, or node_exporter:** edit the `Image=`
-line in the relevant `config/containers/*.container` file, e.g.:
+**A component's version (Prometheus, Alertmanager, Grafana, node_exporter,
+smartctl_exporter):** edit the `Image=` line in the relevant package's
+`.container` file, e.g.:
 
 ```
-# config/containers/prometheus.container
+# packages/metrics-stack/containers/prometheus.container
 Image=docker.io/prom/prometheus:v3.9.0   ->   Image=docker.io/prom/prometheus:v3.10.0
 ```
 
-then either re-run the installer or apply it directly:
+If you installed from source, either re-run that package's `install.sh` or
+apply it directly:
 
 ```
-sudo ./install.sh
-# or, without re-running the whole installer:
 sudo systemctl daemon-reload && sudo systemctl restart prometheus
 ```
+
+If you installed the `.rpm`/`.deb`, an `Image=` bump means cutting a new
+release (see below) and running `dnf upgrade metrics-stack` / `apt upgrade
+metrics-stack` (or the relevant exporter package name) once it's out.
 
 Check each image's tag list before bumping:
 [prom/prometheus](https://hub.docker.com/r/prom/prometheus/tags),
 [prom/alertmanager](https://hub.docker.com/r/prom/alertmanager/tags),
 [prom/node-exporter](https://hub.docker.com/r/prom/node-exporter/tags),
-[grafana/grafana](https://hub.docker.com/r/grafana/grafana/tags).
-
-If you installed via the `.rpm`/`.deb` package instead, an `Image=` bump
-means cutting a new release (see below) and running `dnf upgrade
-metrics-stack` / `apt upgrade metrics-stack` once it's out.
+[grafana/grafana](https://hub.docker.com/r/grafana/grafana/tags),
+[prometheuscommunity/smartctl-exporter](https://hub.docker.com/r/prometheuscommunity/smartctl-exporter/tags).
 
 ## Releasing
 
 Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
 
-1. **smoke-test** — runs `install.sh` on a live Ubuntu 24.04 GitHub-hosted
-   runner (a real systemd VM, not a container, so `systemctl`/Podman/Quadlet
-   all work as they would on a real box), then hits Prometheus, Alertmanager,
-   Grafana, and node_exporter's health endpoints and confirms Prometheus
-   sees all its targets up and all alerting rules loaded. The build is
-   blocked if this fails.
-2. **build** — runs `packaging/build.sh <version>` (version taken from the
-   tag) to produce `metrics-stack-<version>-1.noarch.rpm` and
-   `metrics-stack_<version>-1_all.deb` via [fpm](https://github.com/jordansissel/fpm),
-   and attaches both to the GitHub Release for that tag.
+1. **build** — runs `packaging/build.sh <version>` (version taken from the
+   tag) to produce a `.rpm` and `.deb` for every package under `packages/*/`
+   via [fpm](https://github.com/jordansissel/fpm), sanity-checks each
+   `.rpm`'s file list with `rpm -qlp`, and uploads them as a workflow
+   artifact.
+2. **smoke-test** — on a live Ubuntu 24.04 GitHub-hosted runner (a real
+   systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt dependency
+   resolution all behave as they would on a real box), installs the
+   *actual built* `.deb`s (base, both exporters, the dashboard package),
+   confirms Prometheus/Alertmanager/Grafana/both exporters are healthy,
+   confirms node_exporter and smartctl_exporter **auto-registered**
+   themselves as Prometheus targets with no manual step, confirms alerting
+   rules loaded and the starter dashboard was provisioned, then uninstalls
+   an exporter and confirms its target file was cleaned up.
+3. **release** — only runs if smoke-test passes; attaches every built
+   package to the GitHub Release for that tag.
 
 To cut a release:
 
@@ -156,7 +194,7 @@ pinned Alertmanager image, and restarts the `alertmanager` service. Run
 `monitoring-configure-email --help` for all options (`--no-tls`, password
 prompt, etc).
 
-Alerting rules already shipped (see `config/prometheus/rules.d/`):
+Alerting rules already shipped (see `packages/metrics-stack/prometheus/rules.d/`):
 
 | Alert | Fires when |
 |---|---|
@@ -172,22 +210,30 @@ Alerting rules already shipped (see `config/prometheus/rules.d/`):
 ## Adding exporters
 
 Prometheus watches `/etc/prometheus/targets.d/*.yml` (30s refresh, no
-restart needed) via a bind mount into its container — this didn't change
-from the native-package version. Add a target group with:
+restart needed) via a bind mount into its container. Add a target group with:
 
 ```
 sudo monitoring-add-exporter mysql db1.example.com:9104 db2.example.com:9104
 ```
 
 Remove a job by deleting `/etc/prometheus/targets.d/<job>.yml`. See
-`config/prometheus/targets.d/README.md` for the file format if you'd rather
-write it by hand.
+`packages/metrics-stack/prometheus/targets.d/README.md` for the file format
+if you'd rather write it by hand.
 
-This stack's own node_exporter runs as a container with `Network=host` (it
-needs the real host's network interfaces and `/proc`/`/sys`, not a
-container's) — see `config/containers/node-exporter.container`. Prometheus
-reaches it via `host.containers.internal:9100`, Podman's built-in DNS name
-for "the host" as seen from a bridge-networked container.
+**This stack's own exporters are separate packages, not part of the base:**
+
+- `metrics-stack-exporter-node` — node_exporter, `Network=host` (needs the
+  real host's network/proc/sys view, not a container's).
+- `metrics-stack-exporter-smartctl` — smartctl_exporter, `Network=host` +
+  `--privileged` (smartctl needs raw SG_IO ioctl access to block devices).
+
+Both run with `Network=host` specifically so they install and work
+standalone, without requiring the base's `metrics` Podman network. When
+installed on the same host as the base, their postinstall scripts
+auto-register with Prometheus via `host.containers.internal:<port>` (how a
+bridge-networked container reaches the host); installed on a different host,
+they print the `monitoring-add-exporter` command to run on your Prometheus
+server instead.
 
 For other exporters (MySQL, PostgreSQL, etc.), run them however you like —
 their own container, a container elsewhere on the network, or a native
@@ -216,80 +262,100 @@ seconds — no restart needed. `${DS_*}` datasource placeholders in downloaded
 dashboards are rewritten automatically to use this stack's Prometheus
 datasource.
 
-A starter "Node Overview" dashboard (CPU, memory, disk, network, per-instance
-via a template variable) is included and provisioned automatically.
+The starter "Node Overview" dashboard (CPU, memory, disk, network,
+per-instance via a template variable) ships as its own package,
+`metrics-stack-dashboards-node`, rather than being bundled into the base —
+see [Packages](#packages).
 
 ## Architecture
 
 ```
 node-exporter (host network, :9100) ───────────────┐
+smartctl-exporter (host network, :9633) ───────────┤
 other exporters (containers, native, remote) ──────┼──► Prometheus (:9090)
    registered via targets.d/*.yml                  │        │
                                                     │        ├──► Alertmanager (:9093) ──► email
                                                     │        │
                                                     │        └──◄ Grafana (:3000) queries for graphs
                                                     │
-     'metrics' Podman network joins Prometheus, Alertmanager, and Grafana
-     by container name; node-exporter stays on the host network so it sees
-     real host interfaces/proc/sys, reached via host.containers.internal.
+     'metrics' Podman network (base package only) joins Prometheus,
+     Alertmanager, and Grafana by container name; exporter packages stay on
+     the host network -- both so they see real host interfaces/proc/sys/
+     devices, and so they install standalone without depending on the base.
 ```
 
 ## Repository layout
 
 ```
-install.sh                                   # main installer
-config/
-  containers/
-    metrics.network                          # shared Podman network (Quadlet)
-    prometheus.container                     # Quadlet unit, pinned image tag
-    alertmanager.container                   # Quadlet unit, pinned image tag
-    grafana.container                        # Quadlet unit, pinned image tag
-    node-exporter.container                  # Quadlet unit, pinned image tag, Network=host
-  prometheus/
-    prometheus.yml                           # main Prometheus config
-    rules.d/                                 # alerting rules (host + stack health)
-    targets.d/                               # drop-in exporter targets (file_sd)
-  alertmanager/
-    alertmanager.yml                         # email routing template
-  grafana/
-    provisioning/datasources/prometheus.yml  # auto-provisioned Prometheus datasource
-    provisioning/dashboards/local.yml         # file-based dashboard provider
-    dashboards/node-overview.json             # starter dashboard
-scripts/
-  add-exporter.sh       -> monitoring-add-exporter
-  configure-email.sh    -> monitoring-configure-email
-  add-dashboard.sh      -> monitoring-add-dashboard
+packages/
+  metrics-stack/                             # base package
+    install.sh                               # from-source installer (dev use)
+    containers/
+      metrics.network                        # shared Podman network (Quadlet)
+      prometheus.container                   # Quadlet unit, pinned image tag
+      alertmanager.container                 # Quadlet unit, pinned image tag
+      grafana.container                      # Quadlet unit, pinned image tag
+    prometheus/
+      prometheus.yml                         # main Prometheus config
+      rules.d/                               # alerting rules (host + stack health)
+      targets.d/                             # drop-in exporter targets (file_sd)
+    alertmanager/
+      alertmanager.yml                       # email routing template
+    grafana/
+      provisioning/datasources/prometheus.yml
+      provisioning/dashboards/local.yml       # file-based dashboard provider
+    scripts/
+      add-exporter.sh       -> monitoring-add-exporter
+      configure-email.sh    -> monitoring-configure-email
+      add-dashboard.sh      -> monitoring-add-dashboard
+    packaging/
+      manifest.sh                            # read by packaging/build.sh
+      postinstall.sh                         # %post / postinst
+      preremove.sh                           # %preun / prerm
+
+  metrics-stack-exporter-node/
+    containers/node-exporter.container
+    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+
+  metrics-stack-exporter-smartctl/
+    containers/smartctl-exporter.container
+    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+
+  metrics-stack-dashboards-node/
+    dashboards/node-overview.json
+    packaging/manifest.sh                    # no scriptlets needed
+
 packaging/
-  build.sh                                   # stages files + runs fpm to produce .rpm/.deb
-  scripts/
-    postinstall.sh                           # %post / postinst: daemon-reload, validate, start, firewall
-    preremove.sh                             # %preun / prerm: stop services
+  build.sh                                   # generic: builds every packages/*/ into .rpm+.deb
+
 .github/workflows/
-  release.yml                                # tag-triggered: smoke-test, then build + attach to GH Release
+  release.yml                                # tag-triggered: build, smoke-test, release
 ```
 
 ## Host paths
 
-| Path | Contents |
-|---|---|
-| `/etc/containers/systemd/` | Quadlet unit files (`.network`, `.container`) |
-| `/etc/prometheus/` | `prometheus.yml`, `rules.d/`, `targets.d/` (bind-mounted read-only) |
-| `/etc/alertmanager/alertmanager.yml` | SMTP config, mode `0640` (bind-mounted read-only) |
-| `/etc/grafana/provisioning/` | datasource + dashboard-provider YAML (bind-mounted read-only) |
-| `/var/lib/prometheus/` | Prometheus TSDB data |
-| `/var/lib/alertmanager/` | Alertmanager state |
-| `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` |
+| Path | Contents | Owned by |
+|---|---|---|
+| `/etc/containers/systemd/` | Quadlet unit files (`.network`, `.container`) | all packages |
+| `/etc/prometheus/` | `prometheus.yml`, `rules.d/`, `targets.d/` (bind-mounted read-only) | `metrics-stack` |
+| `/etc/alertmanager/alertmanager.yml` | SMTP config, mode `0640` (bind-mounted read-only) | `metrics-stack` |
+| `/etc/grafana/provisioning/` | datasource + dashboard-provider YAML (bind-mounted read-only) | `metrics-stack` |
+| `/var/lib/prometheus/` | Prometheus TSDB data | `metrics-stack` |
+| `/var/lib/alertmanager/` | Alertmanager state | `metrics-stack` |
+| `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` | `metrics-stack` (dir), dashboard packages (files) |
 
 ## Service names (same on both distros)
 
-`metrics-network`, `prometheus`, `alertmanager`, `node-exporter`, `grafana`
-— all generated by Quadlet from the unit files in `config/containers/`.
+`metrics-network`, `prometheus`, `alertmanager`, `grafana` (from
+`metrics-stack`); `node-exporter` (from `metrics-stack-exporter-node`);
+`smartctl-exporter` (from `metrics-stack-exporter-smartctl`) — all generated
+by Quadlet from each package's `.container`/`.network` files.
 
 ## Notes
 
 - Prometheus retains data for 15 days by default. Tune
-  `--storage.tsdb.retention.time` in `config/containers/prometheus.container`'s
-  `Exec=` line if you need longer retention.
+  `--storage.tsdb.retention.time` in `prometheus.container`'s `Exec=` line
+  if you need longer retention.
 - The `:U` mount flag on Alertmanager's config volume chowns
   `/etc/alertmanager` to the container's internal UID on each start so the
   root-only `0640` `alertmanager.yml` stays readable to the Alertmanager
@@ -297,3 +363,6 @@ packaging/
 - No image digests are pinned, only tags — if you need bit-for-bit
   reproducibility, pin `@sha256:...` digests instead of tags in the
   `Image=` lines.
+- `smartctl-exporter` needs `--privileged` (via `PodmanArgs=`) and root
+  inside the container to issue SG_IO ioctls against raw block devices —
+  there's no meaningful rootless mode for it.
