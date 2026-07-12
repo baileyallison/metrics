@@ -63,6 +63,7 @@ jobs:
           sudo apt install -y ./dist/metrics-stack-exporter-node_*.deb
           sudo apt install -y ./dist/metrics-stack-exporter-smartctl_*.deb
           sudo apt install -y ./dist/metrics-stack-dashboards-node_*.deb
+          sudo apt install -y ./dist/metrics-stack-dashboards-smartctl_*.deb
 
       - name: Wait for base services to become healthy
         run: |
@@ -141,28 +142,30 @@ jobs:
           assert total >= 8, f'expected at least 8 rules, got {total}'
           "
 
-      - name: Check starter dashboard was provisioned
+      - name: Check starter dashboards were provisioned
         run: |
           # Grafana's file-based dashboard provider polls every 30s
           # (updateIntervalSeconds: 30 in provisioning/dashboards/local.yml),
           # so retry rather than checking once right after install.
           success=0
           for i in $(seq 1 15); do
-            result="$(curl -fsS -u admin:admin "http://localhost:3000/api/search?query=Node%20Overview")"
+            result="$(curl -fsS -u admin:admin "http://localhost:3000/api/search")"
             if echo "$result" | python3 -c "
           import json, sys
           results = json.load(sys.stdin)
-          print(results)
-          assert any('Node Overview' in r.get('title', '') for r in results), 'starter dashboard not found'
+          titles = [r.get('title', '') for r in results]
+          print(titles)
+          assert any('Node Overview' in t for t in titles), 'node-overview dashboard not found'
+          assert any('smartctl Overview' in t for t in titles), 'smartctl-overview dashboard not found'
           "; then
               success=1
               break
             fi
-            echo "dashboard not provisioned yet, retrying..."
+            echo "dashboards not provisioned yet, retrying..."
             sleep 5
           done
           if [ "$success" != "1" ]; then
-            echo "starter dashboard was not provisioned within the retry window"
+            echo "starter dashboards were not provisioned within the retry window"
             exit 1
           fi
 

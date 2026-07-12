@@ -15,6 +15,7 @@ unit.
 | `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **not** the base |
 | `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **not** the base |
 | `metrics-stack-dashboards-node` | Starter "Node Overview" Grafana dashboard | nothing (pure data) |
+| `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
 
 Exporter packages are standalone by design: install `metrics-stack-exporter-node`
 on any host you want metrics from — a database server, a NAS, a laptop — with
@@ -44,6 +45,7 @@ sudo apt install ./metrics-stack-exporter-smartctl_<version>-1_all.deb
 
 # on your monitoring server, once you have exporters registered:
 sudo apt install ./metrics-stack-dashboards-node_<version>-1_all.deb
+sudo apt install ./metrics-stack-dashboards-smartctl_<version>-1_all.deb
 ```
 
 Podman is pulled in as a dependency automatically; each package's
@@ -262,10 +264,17 @@ seconds — no restart needed. `${DS_*}` datasource placeholders in downloaded
 dashboards are rewritten automatically to use this stack's Prometheus
 datasource.
 
-The starter "Node Overview" dashboard (CPU, memory, disk, network,
-per-instance via a template variable) ships as its own package,
-`metrics-stack-dashboards-node`, rather than being bundled into the base —
-see [Packages](#packages).
+Two starter dashboards ship as their own packages rather than being bundled
+into the base — see [Packages](#packages):
+
+- `metrics-stack-dashboards-node` — "Node Overview": CPU, memory, disk,
+  network, per-instance via a template variable.
+- `metrics-stack-dashboards-smartctl` — "smartctl Overview": overall SMART
+  health, temperature, power-on time/cycles, a device info table, a
+  templated view over any SMART attribute (`$attribute`, since attribute
+  names vary by vendor/drive type), and NVMe-specific wear/error metrics
+  (percentage used, available spare, media errors, critical warnings).
+  Templated over `$instance` and `$device`.
 
 ## Architecture
 
@@ -323,6 +332,10 @@ packages/
 
   metrics-stack-dashboards-node/
     dashboards/node-overview.json
+    packaging/manifest.sh                    # no scriptlets needed
+
+  metrics-stack-dashboards-smartctl/
+    dashboards/smartctl-overview.json
     packaging/manifest.sh                    # no scriptlets needed
 
 packaging/
