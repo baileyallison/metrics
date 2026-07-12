@@ -1,0 +1,100 @@
+name: Build and release packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  smoke-test:
+    # GitHub-hosted runners are full VMs with systemd as PID 1 (unlike a
+    # container-based CI executor), so we can actually install Podman,
+    # deploy the real Quadlet units, and hit live HTTP endpoints here --
+    # this is a real end-to-end test, not just a syntax check.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Run installer
+        run: sudo ./install.sh
+
+      - name: Wait for services to become healthy
+        run: |
+          ok=0
+          for i in $(seq 1 60); do
+            ok=1
+            curl -fsS http://localhost:9090/-/healthy >/dev/null 2>&1 || ok=0
+            curl -fsS http://localhost:9093/-/healthy >/dev/null 2>&1 || ok=0
+            curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 || ok=0
+            curl -fsS http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
+            [ "$ok" = "1" ] && break
+            sleep 3
+          done
+          if [ "$ok" != "1" ]; then
+            echo "services did not become healthy in time"
+            exit 1
+          fi
+
+      - name: Check Prometheus targets are up
+        run: |
+          curl -fsS http://localhost:9090/api/v1/targets | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          active = data['data']['activeTargets']
+          up = [t for t in active if t['health'] == 'up']
+          print(f'{len(up)}/{len(active)} targets up')
+          assert len(active) >= 3, f'expected at least 3 targets, got {len(active)}'
+          assert len(up) == len(active), 'not all targets are up'
+          "
+
+      - name: Check Prometheus alerting rules loaded
+        run: |
+          curl -fsS http://localhost:9090/api/v1/rules | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          groups = data['data']['groups']
+          total = sum(len(g['rules']) for g in groups)
+          print(f'{len(groups)} rule groups, {total} rules loaded')
+          assert total >= 8, f'expected at least 8 rules, got {total}'
+          "
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          for svc in metrics-network prometheus alertmanager node-exporter grafana; do
+            echo "=== $svc ==="
+            sudo systemctl status "$svc" --no-pager || true
+            sudo journalctl -u "$svc" --no-pager | tail -50 || true
+          done
+
+  build:
+    needs: smoke-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install fpm and package build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
+
+      - name: Determine version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build packages
+        run: ./packaging/build.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

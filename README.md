@@ -12,6 +12,28 @@ node_exporter versions are pinned by the `Image=` tag in each
 
 ## Quick start
 
+**Option A: install a release package (recommended).** Every tagged release
+is built and smoke-tested in CI (see [Releasing](#releasing)), producing a
+`.rpm` and a `.deb` attached to the [GitHub Release](../../releases):
+
+```
+# Rocky/RHEL/Alma
+sudo dnf install ./metrics-stack-<version>-1.noarch.rpm
+
+# Ubuntu/Debian
+sudo apt install ./metrics-stack_<version>-1_all.deb
+```
+
+Podman is pulled in automatically as a dependency; the package's post-install
+step deploys the Quadlet units, validates config, and starts everything —
+same end state as Option B below, just via `dnf`/`apt` instead of a shell
+script, with proper `%config(noreplace)`/conffile handling for local edits
+and a clean `dnf remove`/`apt remove` for uninstall (your data under
+`/var/lib/{prometheus,alertmanager,grafana}` isn't part of the package and
+survives removal either way).
+
+**Option B: install from source.**
+
 ```
 git clone <this repo>
 cd metrics
@@ -19,7 +41,13 @@ sudo ./install.sh
 ```
 
 This detects your distro, installs Podman, deploys the Quadlet units and
-default configuration, validates it, and starts everything.
+default configuration, validates it, and starts everything. Useful for
+trying out unreleased changes, or if you'd rather not fetch a prebuilt
+package. Re-running `./install.sh` is safe — it's idempotent. Locally-edited
+managed configs/units are left alone; pass `--force-config` to overwrite them
+with the versions shipped in this repo (a timestamped backup is made first).
+
+**Either way**, once installed:
 
 - Grafana: `http://<host>:3000` (default login `admin`/`admin`, change on first login)
 - Prometheus: `http://<host>:9090`
@@ -28,10 +56,6 @@ default configuration, validates it, and starts everything.
 Only port 3000 (Grafana) is opened on the firewall by default; Prometheus and
 Alertmanager are reachable on the host but not punched through the firewall,
 on the assumption you'll browse them through Grafana or over SSH tunnel/VPN.
-
-Re-running `./install.sh` is safe — it's idempotent. Locally-edited managed
-configs/units are left alone; pass `--force-config` to overwrite them with
-the versions shipped in this repo (a timestamped backup is made first).
 
 ## Why containers instead of native packages
 
@@ -88,6 +112,35 @@ Check each image's tag list before bumping:
 [prom/alertmanager](https://hub.docker.com/r/prom/alertmanager/tags),
 [prom/node-exporter](https://hub.docker.com/r/prom/node-exporter/tags),
 [grafana/grafana](https://hub.docker.com/r/grafana/grafana/tags).
+
+If you installed via the `.rpm`/`.deb` package instead, an `Image=` bump
+means cutting a new release (see below) and running `dnf upgrade
+metrics-stack` / `apt upgrade metrics-stack` once it's out.
+
+## Releasing
+
+Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
+
+1. **smoke-test** — runs `install.sh` on a live Ubuntu 24.04 GitHub-hosted
+   runner (a real systemd VM, not a container, so `systemctl`/Podman/Quadlet
+   all work as they would on a real box), then hits Prometheus, Alertmanager,
+   Grafana, and node_exporter's health endpoints and confirms Prometheus
+   sees all its targets up and all alerting rules loaded. The build is
+   blocked if this fails.
+2. **build** — runs `packaging/build.sh <version>` (version taken from the
+   tag) to produce `metrics-stack-<version>-1.noarch.rpm` and
+   `metrics-stack_<version>-1_all.deb` via [fpm](https://github.com/jordansissel/fpm),
+   and attaches both to the GitHub Release for that tag.
+
+To cut a release:
+
+```
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+To build packages locally instead (e.g. to test packaging changes before
+tagging): `gem install --no-document fpm`, then `./packaging/build.sh 1.1.0-dev`.
 
 ## Adding email alerts
 
@@ -206,6 +259,13 @@ scripts/
   add-exporter.sh       -> monitoring-add-exporter
   configure-email.sh    -> monitoring-configure-email
   add-dashboard.sh      -> monitoring-add-dashboard
+packaging/
+  build.sh                                   # stages files + runs fpm to produce .rpm/.deb
+  scripts/
+    postinstall.sh                           # %post / postinst: daemon-reload, validate, start, firewall
+    preremove.sh                             # %preun / prerm: stop services
+.github/workflows/
+  release.yml                                # tag-triggered: smoke-test, then build + attach to GH Release
 ```
 
 ## Host paths
