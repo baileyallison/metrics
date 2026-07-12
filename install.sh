@@ -236,9 +236,14 @@ validate_config
 # Start/enable services
 # ---------------------------------------------------------------------------
 start_services() {
+  # Quadlet-generated units live under /run/systemd/generator/ and can't be
+  # `systemctl enable`d (systemd rejects enabling generated/transient units).
+  # They're already wired to start at boot: Quadlet reads each unit's
+  # [Install] WantedBy= at generation time and creates the .wants symlink
+  # itself. So we only need to start them now, not enable them.
   for svc in metrics-network prometheus alertmanager node-exporter grafana; do
-    log "enabling and starting $svc"
-    systemctl enable --now "$svc"
+    log "starting $svc"
+    systemctl start "$svc"
   done
 }
 start_services
