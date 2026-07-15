@@ -1,0 +1,38 @@
+# managed by metrics-stack
+# Version control: bump the Image= tag below, commit, then
+# `sudo systemctl daemon-reload && sudo systemctl restart ipmi-exporter`
+# to roll it out. Check
+# https://hub.docker.com/r/prometheuscommunity/ipmi-exporter/tags for
+# newer releases before bumping.
+#
+# Local-host mode: scraping the plain /metrics endpoint (no target= query
+# param, no config file) makes the exporter report the IPMI sensors of the
+# host it's running on -- this package doesn't do remote/fleet BMC polling
+# (a different deployment model: one central exporter querying many remote
+# BMC IPs over the network with per-target credentials -- out of scope
+# here since it needs a materially different Prometheus scrape_config
+# shape than the rest of this stack's targets.d model).
+#
+# Needs --privileged and root so the bundled freeipmi tools can access
+# /dev/ipmi0 -- there's no meaningful rootless mode for local IPMI access,
+# same reasoning as smartctl-exporter. Network=host for the same
+# standalone-install reasoning as node/smartctl exporters: this package
+# doesn't depend on the metrics-stack base.
+[Unit]
+Description=IPMI Exporter
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/prometheuscommunity/ipmi-exporter:v1.10.1
+ContainerName=ipmi-exporter
+Network=host
+User=0
+PodmanArgs=--privileged
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

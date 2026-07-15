@@ -14,8 +14,10 @@ unit.
 | `metrics-stack` | Prometheus + Alertmanager + Grafana (the base) | Podman |
 | `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **not** the base |
 | `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **not** the base |
+| `metrics-stack-exporter-ipmi` | ipmi_exporter (local host BMC: temp/power/fan/voltage) | Podman only — **not** the base |
 | `metrics-stack-dashboards-node` | Starter "Node Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
+| `metrics-stack-dashboards-ipmi` | Starter "IPMI Overview" Grafana dashboard | nothing (pure data) |
 
 Exporter packages are standalone by design: install `metrics-stack-exporter-node`
 on any host you want metrics from — a database server, a NAS, a laptop — with
@@ -42,10 +44,12 @@ sudo apt install ./metrics-stack_<version>-1_all.deb
 # on that same box, or any other host you want metrics from:
 sudo apt install ./metrics-stack-exporter-node_<version>-1_all.deb
 sudo apt install ./metrics-stack-exporter-smartctl_<version>-1_all.deb
+sudo apt install ./metrics-stack-exporter-ipmi_<version>-1_all.deb
 
 # on your monitoring server, once you have exporters registered:
 sudo apt install ./metrics-stack-dashboards-node_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-smartctl_<version>-1_all.deb
+sudo apt install ./metrics-stack-dashboards-ipmi_<version>-1_all.deb
 ```
 
 Podman is pulled in as a dependency automatically; each package's
@@ -228,8 +232,18 @@ if you'd rather write it by hand.
   real host's network/proc/sys view, not a container's).
 - `metrics-stack-exporter-smartctl` — smartctl_exporter, `Network=host` +
   `--privileged` (smartctl needs raw SG_IO ioctl access to block devices).
+- `metrics-stack-exporter-ipmi` — ipmi_exporter, `Network=host` +
+  `--privileged` (needs `/dev/ipmi0` to read the local BMC). This is
+  **local-host mode only**: it reports the sensors of the physical machine
+  it's installed on via the plain `/metrics` endpoint. ipmi_exporter also
+  supports a very different remote/fleet mode (one central exporter polling
+  many remote BMC IPs via `/ipmi?target=...` with per-target credentials,
+  the blackbox_exporter multi-target pattern) — that's out of scope here
+  since it needs a materially different Prometheus scrape_config shape
+  (`params:` + `relabel_configs`) than this stack's plain `targets.d`
+  host:port model.
 
-Both run with `Network=host` specifically so they install and work
+All three run with `Network=host` specifically so they install and work
 standalone, without requiring the base's `metrics` Podman network. When
 installed on the same host as the base, their postinstall scripts
 auto-register with Prometheus via `host.containers.internal:<port>` (how a
@@ -264,8 +278,8 @@ seconds — no restart needed. `${DS_*}` datasource placeholders in downloaded
 dashboards are rewritten automatically to use this stack's Prometheus
 datasource.
 
-Two starter dashboards ship as their own packages rather than being bundled
-into the base — see [Packages](#packages):
+Three starter dashboards ship as their own packages rather than being
+bundled into the base — see [Packages](#packages):
 
 - `metrics-stack-dashboards-node` — "Node Overview": CPU, memory, disk,
   network, per-instance via a template variable.
@@ -275,12 +289,18 @@ into the base — see [Packages](#packages):
   names vary by vendor/drive type), and NVMe-specific wear/error metrics
   (percentage used, available spare, media errors, critical warnings).
   Templated over `$instance` and `$device`.
+- `metrics-stack-dashboards-ipmi` — "IPMI Overview": chassis power state,
+  live power draw, a BMC info table, SEL entry count, a "sensors not
+  nominal" count, temperature/fan/voltage/current sensors, a templated view
+  over generic sensor types (`$sensor_type`), and collector health
+  (`ipmi_up`). Templated over `$instance`.
 
 ## Architecture
 
 ```
 node-exporter (host network, :9100) ───────────────┐
 smartctl-exporter (host network, :9633) ───────────┤
+ipmi-exporter (host network, :9290) ────────────────┤
 other exporters (containers, native, remote) ──────┼──► Prometheus (:9090)
    registered via targets.d/*.yml                  │        │
                                                     │        ├──► Alertmanager (:9093) ──► email
@@ -330,12 +350,20 @@ packages/
     containers/smartctl-exporter.container
     packaging/{manifest.sh,postinstall.sh,preremove.sh}
 
+  metrics-stack-exporter-ipmi/
+    containers/ipmi-exporter.container
+    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+
   metrics-stack-dashboards-node/
     dashboards/node-overview.json
     packaging/manifest.sh                    # no scriptlets needed
 
   metrics-stack-dashboards-smartctl/
     dashboards/smartctl-overview.json
+    packaging/manifest.sh                    # no scriptlets needed
+
+  metrics-stack-dashboards-ipmi/
+    dashboards/ipmi-overview.json
     packaging/manifest.sh                    # no scriptlets needed
 
 packaging/
@@ -361,8 +389,9 @@ packaging/
 
 `metrics-network`, `prometheus`, `alertmanager`, `grafana` (from
 `metrics-stack`); `node-exporter` (from `metrics-stack-exporter-node`);
-`smartctl-exporter` (from `metrics-stack-exporter-smartctl`) — all generated
-by Quadlet from each package's `.container`/`.network` files.
+`smartctl-exporter` (from `metrics-stack-exporter-smartctl`); `ipmi-exporter`
+(from `metrics-stack-exporter-ipmi`) — all generated by Quadlet from each
+package's `.container`/`.network` files.
 
 ## Notes
 
@@ -379,3 +408,6 @@ by Quadlet from each package's `.container`/`.network` files.
 - `smartctl-exporter` needs `--privileged` (via `PodmanArgs=`) and root
   inside the container to issue SG_IO ioctls against raw block devices —
   there's no meaningful rootless mode for it.
+- `ipmi-exporter` likewise needs `--privileged` and root to read `/dev/ipmi0`.
+  On hardware without a real BMC (VMs, most desktops/laptops), it still
+  starts and serves `/metrics` — just with no sensor data.
