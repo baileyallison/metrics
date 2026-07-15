@@ -46,6 +46,11 @@ jobs:
     # the raw install script.
     needs: build
     runs-on: ubuntu-24.04
+    # Backstop in addition to --max-time on every curl call: normally this
+    # job finishes in a few minutes, so if something hangs (v2.2.0's first
+    # run did, on an un-timed-out curl waiting on ipmi-exporter) this caps
+    # the damage instead of running for GitHub's default 360-minute limit.
+    timeout-minutes: 15
     steps:
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -72,9 +77,9 @@ jobs:
           ok=0
           for i in $(seq 1 60); do
             ok=1
-            curl -fsS http://localhost:9090/-/healthy >/dev/null 2>&1 || ok=0
-            curl -fsS http://localhost:9093/-/healthy >/dev/null 2>&1 || ok=0
-            curl -fsS http://localhost:3000/api/health >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:9090/-/healthy >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:9093/-/healthy >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:3000/api/health >/dev/null 2>&1 || ok=0
             [ "$ok" = "1" ] && break
             sleep 3
           done
@@ -91,9 +96,9 @@ jobs:
           ok=0
           for i in $(seq 1 30); do
             ok=1
-            curl -fsS http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
-            curl -fsS http://localhost:9633/metrics >/dev/null 2>&1 || ok=0
-            curl -fsS http://localhost:9290/metrics >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:9633/metrics >/dev/null 2>&1 || ok=0
+            curl -fsS --max-time 10 http://localhost:9290/metrics >/dev/null 2>&1 || ok=0
             [ "$ok" = "1" ] && break
             sleep 3
           done
@@ -108,7 +113,7 @@ jobs:
           # a scrape_interval (15s) before a newly-registered target shows up.
           success=0
           for i in $(seq 1 15); do
-            result="$(curl -fsS http://localhost:9090/api/v1/targets)"
+            result="$(curl -fsS --max-time 10 http://localhost:9090/api/v1/targets)"
             if echo "$result" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
@@ -140,7 +145,7 @@ jobs:
 
       - name: Check Prometheus alerting rules loaded
         run: |
-          curl -fsS http://localhost:9090/api/v1/rules | python3 -c "
+          curl -fsS --max-time 10 http://localhost:9090/api/v1/rules | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
           groups = data['data']['groups']
@@ -156,7 +161,7 @@ jobs:
           # so retry rather than checking once right after install.
           success=0
           for i in $(seq 1 15); do
-            result="$(curl -fsS -u admin:admin "http://localhost:3000/api/search")"
+            result="$(curl -fsS --max-time 10 -u admin:admin "http://localhost:3000/api/search")"
             if echo "$result" | python3 -c "
           import json, sys
           results = json.load(sys.stdin)
