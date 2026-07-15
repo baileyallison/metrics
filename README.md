@@ -30,9 +30,10 @@ Grafana around, but don't require one to install.
 
 ## Quick start
 
-**Option A: install release packages (recommended).** Every tagged release
-is built and smoke-tested end-to-end in CI (see [Releasing](#releasing)),
-producing `.rpm`s and `.deb`s attached to the [GitHub Release](../../releases):
+Every package is install-only-via-`.rpm`/`.deb` — no git-clone-and-run-a-script
+path for any of them, base included. Every tagged release is built and
+smoke-tested end-to-end in CI (see [Releasing](#releasing)), producing
+`.rpm`s and `.deb`s attached to the [GitHub Release](../../releases):
 
 ```
 # on your monitoring server (Rocky/RHEL/Alma)
@@ -59,22 +60,10 @@ handling means local edits survive upgrades, and `dnf remove`/`apt remove`
 cleanly uninstalls (your data under `/var/lib/{prometheus,alertmanager,grafana}`
 isn't part of any package manifest, so it survives removal either way).
 
-**Option B: install the base from source** (exporters/dashboards are
-package-only — see [Why no from-source exporters](#why-no-from-source-installer-for-exportersdashboards)):
+To try out unreleased changes without waiting for a tagged release, build
+packages locally instead — see [Releasing](#releasing).
 
-```
-git clone <this repo>
-cd metrics
-sudo ./packages/metrics-stack/install.sh
-```
-
-Useful for trying out unreleased changes to the base, or if you'd rather not
-fetch a prebuilt package. Re-running it is safe — it's idempotent.
-Locally-edited managed configs/units are left alone; pass `--force-config`
-to overwrite them with the versions shipped in this repo (a timestamped
-backup is made first).
-
-**Either way**, once the base is installed:
+Once the base is installed:
 
 - Grafana: `http://<host>:3000` (default login `admin`/`admin`, change on first login)
 - Prometheus: `http://<host>:9090`
@@ -110,15 +99,6 @@ the container version" means in practice.
 which needs Podman 4.4+. Ubuntu 24.04's default `universe` Podman (4.9.3)
 clears that bar, so this stack targets 24.04+ rather than 22.04+.
 
-## Why no from-source installer for exporters/dashboards
-
-The base package still ships `packages/metrics-stack/install.sh` for
-git-clone/dev use. Exporter and dashboard packages don't have an equivalent
-script — they're small enough, and the whole point of splitting them out is
-fleet-wide distribution (install the same `.rpm`/`.deb` on many hosts), not
-a per-host git clone. Build them with `packaging/build.sh` (see
-[Releasing](#releasing)) or grab a tagged release.
-
 ## Upgrading
 
 **OS and Podman itself:**
@@ -137,16 +117,9 @@ smartctl_exporter):** edit the `Image=` line in the relevant package's
 Image=docker.io/prom/prometheus:v3.9.0   ->   Image=docker.io/prom/prometheus:v3.10.0
 ```
 
-If you installed from source, either re-run that package's `install.sh` or
-apply it directly:
-
-```
-sudo systemctl daemon-reload && sudo systemctl restart prometheus
-```
-
-If you installed the `.rpm`/`.deb`, an `Image=` bump means cutting a new
-release (see below) and running `dnf upgrade metrics-stack` / `apt upgrade
-metrics-stack` (or the relevant exporter package name) once it's out.
+An `Image=` bump means cutting a new release (see [Releasing](#releasing))
+and running `dnf upgrade metrics-stack` / `apt upgrade metrics-stack` (or
+the relevant exporter package name) once it's out.
 
 Check each image's tag list before bumping:
 [prom/prometheus](https://hub.docker.com/r/prom/prometheus/tags),
@@ -318,7 +291,6 @@ other exporters (containers, native, remote) ──────┼──► Prom
 ```
 packages/
   metrics-stack/                             # base package
-    install.sh                               # from-source installer (dev use)
     containers/
       metrics.network                        # shared Podman network (Quadlet)
       prometheus.container                   # Quadlet unit, pinned image tag
