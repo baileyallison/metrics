@@ -344,15 +344,15 @@ packages/
 
   metrics-stack-exporter-node/
     containers/node-exporter.container
-    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+    packaging/manifest.sh                    # sets PKG_EXPORTER_* -- see packaging/templates/
 
   metrics-stack-exporter-smartctl/
     containers/smartctl-exporter.container
-    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+    packaging/manifest.sh                    # sets PKG_EXPORTER_* -- see packaging/templates/
 
   metrics-stack-exporter-ipmi/
     containers/ipmi-exporter.container
-    packaging/{manifest.sh,postinstall.sh,preremove.sh}
+    packaging/manifest.sh                    # sets PKG_EXPORTER_* -- see packaging/templates/
 
   metrics-stack-dashboards-node/
     dashboards/node-overview.json
@@ -368,6 +368,9 @@ packages/
 
 packaging/
   build.sh                                   # generic: builds every packages/*/ into .rpm+.deb
+  templates/
+    exporter-postinstall.sh                  # shared template for all standalone exporter packages
+    exporter-preremove.sh                    # (node/smartctl/ipmi differ only in 4 PKG_EXPORTER_* values)
 
 .github/workflows/
   release.yml                                # tag-triggered: build, smoke-test, release

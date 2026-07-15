@@ -11,6 +11,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEMPLATES_DIR="$REPO_DIR/packaging/templates"
 VERSION="${1:?Usage: packaging/build.sh <version> (e.g. 1.0.0, no leading v)}"
 ITERATION=1
 OUT_DIR="$REPO_DIR/dist"
@@ -21,6 +22,21 @@ if ! command -v fpm >/dev/null 2>&1; then
 fi
 
 mkdir -p "$OUT_DIR"
+
+# Renders packaging/templates/exporter-{postinstall,preremove}.sh, replacing
+# @SERVICE@/@JOB@/@PORT@/@NOTE@ with a package's PKG_EXPORTER_* values. Used
+# for the standalone exporter packages, which are otherwise near-identical
+# aside from these four values -- see any exporter's packaging/manifest.sh.
+render_template() {
+  local template="$1"
+  local content
+  content="$(cat "$template")"
+  content="${content//@SERVICE@/$PKG_EXPORTER_SERVICE}"
+  content="${content//@JOB@/$PKG_EXPORTER_JOB}"
+  content="${content//@PORT@/$PKG_EXPORTER_PORT}"
+  content="${content//@NOTE@/$PKG_EXPORTER_NOTE}"
+  echo "$content"
+}
 
 build_package() {
   local pkg_dir="$1"
@@ -34,6 +50,10 @@ build_package() {
   PKG_DIRECTORIES=()
   PKG_POSTINSTALL=""
   PKG_PREREMOVE=""
+  PKG_EXPORTER_SERVICE=""
+  PKG_EXPORTER_JOB=""
+  PKG_EXPORTER_PORT=""
+  PKG_EXPORTER_NOTE=""
   # shellcheck disable=SC1090
   source "$pkg_dir/packaging/manifest.sh"
 
@@ -78,11 +98,22 @@ build_package() {
     [[ -n "$cf" ]] && common_args+=(--config-files "$cf")
   done
 
-  if [[ -n "$PKG_POSTINSTALL" ]]; then
-    common_args+=(--after-install "$pkg_dir/$PKG_POSTINSTALL")
-  fi
-  if [[ -n "$PKG_PREREMOVE" ]]; then
-    common_args+=(--before-remove "$pkg_dir/$PKG_PREREMOVE")
+  if [[ -n "$PKG_EXPORTER_SERVICE" ]]; then
+    # Rendered scripts live under $stage/.scripts/, outside the etc/usr/var
+    # paths passed to fpm below, so they're never mistaken for package
+    # content -- just maintainer scripts fpm embeds into the package metadata.
+    mkdir -p "$stage/.scripts"
+    render_template "$TEMPLATES_DIR/exporter-postinstall.sh" > "$stage/.scripts/postinstall.sh"
+    render_template "$TEMPLATES_DIR/exporter-preremove.sh" > "$stage/.scripts/preremove.sh"
+    common_args+=(--after-install "$stage/.scripts/postinstall.sh")
+    common_args+=(--before-remove "$stage/.scripts/preremove.sh")
+  else
+    if [[ -n "$PKG_POSTINSTALL" ]]; then
+      common_args+=(--after-install "$pkg_dir/$PKG_POSTINSTALL")
+    fi
+    if [[ -n "$PKG_PREREMOVE" ]]; then
+      common_args+=(--before-remove "$pkg_dir/$PKG_PREREMOVE")
+    fi
   fi
 
   # fpm needs at least one input path -- pass whichever top-level FHS dirs

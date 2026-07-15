@@ -13,5 +13,15 @@ PKG_CONFIG_FILES=(
 
 PKG_DIRECTORIES=()
 
-PKG_POSTINSTALL="packaging/postinstall.sh"
-PKG_PREREMOVE="packaging/preremove.sh"
+# postinstall.sh/preremove.sh are generated from packaging/templates/
+# exporter-{postinstall,preremove}.sh -- see build.sh's render_template.
+# All standalone exporter packages differ only in these four values.
+PKG_EXPORTER_SERVICE="ipmi-exporter"
+PKG_EXPORTER_JOB="ipmi"
+PKG_EXPORTER_PORT="9290"
+PKG_EXPORTER_NOTE="$(cat <<'EOF'
+log "Note: this reports the LOCAL host's IPMI sensors (needs a real BMC/"
+log "/dev/ipmi0 -- on hardware without one, /metrics still responds but"
+log "with no sensor data)."
+EOF
+)"

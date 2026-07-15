@@ -13,5 +13,10 @@ PKG_CONFIG_FILES=(
 
 PKG_DIRECTORIES=()
 
-PKG_POSTINSTALL="packaging/postinstall.sh"
-PKG_PREREMOVE="packaging/preremove.sh"
+# postinstall.sh/preremove.sh are generated from packaging/templates/
+# exporter-{postinstall,preremove}.sh -- see build.sh's render_template.
+# All standalone exporter packages differ only in these four values.
+PKG_EXPORTER_SERVICE="node-exporter"
+PKG_EXPORTER_JOB="node"
+PKG_EXPORTER_PORT="9100"
+PKG_EXPORTER_NOTE=""
