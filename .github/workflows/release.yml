@@ -50,7 +50,7 @@ jobs:
     # job finishes in a few minutes, so if something hangs (v2.2.0's first
     # run did, on an un-timed-out curl waiting on ipmi-exporter) this caps
     # the damage instead of running for GitHub's default 360-minute limit.
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Download packages
         uses: actions/download-artifact@v4
@@ -88,22 +88,44 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for exporters to respond
+      - name: Wait for node/smartctl exporters to respond
         run: |
-          # ipmi-exporter still serves /metrics on hardware with no real BMC
-          # (like this CI runner) -- just with no sensor data -- so a plain
-          # 200 is the right bar here, same as smartctl-exporter.
           ok=0
           for i in $(seq 1 30); do
             ok=1
             curl -fsS --max-time 10 http://localhost:9100/metrics >/dev/null 2>&1 || ok=0
             curl -fsS --max-time 10 http://localhost:9633/metrics >/dev/null 2>&1 || ok=0
-            curl -fsS --max-time 10 http://localhost:9290/metrics >/dev/null 2>&1 || ok=0
             [ "$ok" = "1" ] && break
             sleep 3
           done
           if [ "$ok" != "1" ]; then
             echo "exporters did not respond in time"
+            exit 1
+          fi
+
+      - name: Wait for ipmi-exporter to respond
+        run: |
+          # On hardware with no real BMC (like this CI runner), freeipmi's
+          # probing of a nonexistent IPMI interface takes ~60s to fail per
+          # attempt (unlike smartctl's ioctls, which fail near-instantly
+          # against a nonexistent device) -- confirmed via journalctl on a
+          # prior failed run: "ipmi_sdr_cache_create: internal IPMI error"
+          # logged on an exact 60s cadence. A single /metrics request can
+          # legitimately take that long here, so this needs a long per-call
+          # timeout and few, widely-spaced retries -- polling every few
+          # seconds just stacks up concurrent slow requests instead of
+          # letting one finish. Real hardware with a working BMC responds in
+          # milliseconds; this slowness is CI-environment-specific.
+          ok=0
+          for i in 1 2 3; do
+            if curl -fsS --max-time 90 http://localhost:9290/metrics >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            echo "ipmi-exporter not responding yet (attempt $i/3)..."
+          done
+          if [ "$ok" != "1" ]; then
+            echo "ipmi-exporter did not respond in time"
             exit 1
           fi
 
