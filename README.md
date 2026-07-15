@@ -137,17 +137,33 @@ Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
    via [fpm](https://github.com/jordansissel/fpm), sanity-checks each
    `.rpm`'s file list with `rpm -qlp`, and uploads them as a workflow
    artifact.
-2. **smoke-test** — on a live Ubuntu 24.04 GitHub-hosted runner (a real
-   systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt dependency
-   resolution all behave as they would on a real box), installs the
-   *actual built* `.deb`s (base, both exporters, the dashboard package),
-   confirms Prometheus/Alertmanager/Grafana/both exporters are healthy,
-   confirms node_exporter and smartctl_exporter **auto-registered**
-   themselves as Prometheus targets with no manual step, confirms alerting
-   rules loaded and the starter dashboard was provisioned, then uninstalls
-   an exporter and confirms its target file was cleaned up.
-3. **release** — only runs if smoke-test passes; attaches every built
-   package to the GitHub Release for that tag.
+2. **smoke-test-ubuntu** and **smoke-test-rocky** run in parallel, each only
+   depending on `build`:
+   - **smoke-test-ubuntu** — on a live Ubuntu 24.04 GitHub-hosted runner (a
+     real systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt
+     dependency resolution all behave as they would on a real box), installs
+     the *actual built* `.deb`s (all seven packages), confirms
+     Prometheus/Alertmanager/Grafana/both exporters are healthy, confirms
+     node_exporter/smartctl_exporter/ipmi_exporter **auto-registered**
+     themselves as Prometheus targets with no manual step, confirms alerting
+     rules loaded and the starter dashboards were provisioned, then
+     uninstalls an exporter and confirms its target file was cleaned up.
+   - **smoke-test-rocky** — installs the *actual built* `.rpm`s inside a
+     plain `rockylinux:9` container. Deliberately narrower scope than the
+     Ubuntu lane: a container has no systemd as PID 1, so the `%post`
+     scriptlet's `systemctl` calls would just fail before testing anything
+     (identically for a correct or broken package, so not a useful signal).
+     Installs with `--setopt=tsflags=noscripts` instead, validating what a
+     container *can* meaningfully check — real `dnf`/`Requires: podman`
+     dependency resolution against EL9's AppStream repo, that all seven
+     packages install together without file conflicts, correct file
+     placement/permissions, and that `%config(noreplace)` markers landed
+     correctly. It does not cover service startup or SELinux labeling
+     (Rocky enforces SELinux by default; Ubuntu doesn't) — that would need
+     a real systemd environment (nested KVM or a self-hosted runner), a
+     bigger step taken only if this lighter check turns up a reason to.
+3. **release** — only runs if both smoke-test jobs pass; attaches every
+   built package to the GitHub Release for that tag.
 
 To cut a release:
 

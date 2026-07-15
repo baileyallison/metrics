@@ -38,7 +38,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  smoke-test:
+  smoke-test-ubuntu:
     # GitHub-hosted runners are full VMs with systemd as PID 1 (unlike a
     # container-based CI executor), so we can install the actual built .deb
     # packages, let apt resolve their real Depends: podman, and hit live
@@ -217,8 +217,78 @@ jobs:
             sudo journalctl -u "$svc" --no-pager | tail -50 || true
           done
 
+  smoke-test-rocky:
+    # Runs in parallel with smoke-test-ubuntu (both only need: build), not
+    # instead of it -- .deb and .rpm are validated independently.
+    #
+    # Scope is deliberately narrower than the Ubuntu lane: this runs inside
+    # a plain rockylinux:9 container, which has no systemd as PID 1 (unlike
+    # the Ubuntu job, which runs directly on a full VM runner). The %post
+    # scriptlet's systemctl calls would fail immediately under its `set -e`
+    # before testing anything else -- that failure mode is identical for a
+    # correct package and a broken one, so it isn't a meaningful signal.
+    # Installing with --setopt=tsflags=noscripts skips scriptlet execution
+    # entirely and validates what a container-based job *can* meaningfully
+    # check: real dnf dependency resolution (Requires: podman against a
+    # real EL9 AppStream repo), that all 7 packages install together
+    # without file conflicts, correct file placement/permissions, and that
+    # %config(noreplace) markers landed on the right files. It does not
+    # cover service startup, exporter auto-registration, or SELinux
+    # labeling -- catching those on real EL9 would need an actual systemd
+    # environment (nested KVM or a self-hosted runner), which is a bigger
+    # step to take only if this lighter check turns up a reason to.
+    needs: build
+    runs-on: ubuntu-24.04
+    container:
+      image: rockylinux:9
+    timeout-minutes: 10
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: dist
+
+      - name: Install all packages (dependency + file-manifest check only)
+        run: |
+          dnf install -y --setopt=tsflags=noscripts ./dist/*.noarch.rpm
+
+      - name: Confirm every package is recorded as installed
+        run: |
+          rpm -q metrics-stack \
+            metrics-stack-exporter-node \
+            metrics-stack-exporter-smartctl \
+            metrics-stack-exporter-ipmi \
+            metrics-stack-dashboards-node \
+            metrics-stack-dashboards-smartctl \
+            metrics-stack-dashboards-ipmi
+
+      - name: Confirm key files landed with correct permissions
+        run: |
+          test -f /etc/containers/systemd/prometheus.container
+          test -f /etc/containers/systemd/node-exporter.container
+          test -f /usr/bin/monitoring-add-exporter
+          test -f /var/lib/grafana/dashboards/node-overview.json
+          mode="$(stat -c '%a' /etc/alertmanager/alertmanager.yml)"
+          [ "$mode" = "640" ] || { echo "alertmanager.yml is mode $mode, expected 640"; exit 1; }
+
+      - name: Confirm %config(noreplace) markers landed
+        run: |
+          configfiles="$(rpm -q --configfiles metrics-stack)"
+          echo "$configfiles"
+          echo "$configfiles" | grep -qF /etc/alertmanager/alertmanager.yml
+          echo "$configfiles" | grep -qF /etc/prometheus/prometheus.yml
+
+      - name: Dump state on failure
+        if: failure()
+        run: |
+          echo "=== installed metrics-stack packages ==="
+          rpm -qa | grep metrics-stack || echo "none installed"
+          echo "=== dnf history ==="
+          dnf history list || true
+
   release:
-    needs: smoke-test
+    needs: [smoke-test-ubuntu, smoke-test-rocky]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
