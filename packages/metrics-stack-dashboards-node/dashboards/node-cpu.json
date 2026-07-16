@@ -1,7 +1,7 @@
 {
   "id": null,
-  "uid": "node-overview",
-  "title": "Node Overview",
+  "uid": "node-cpu",
+  "title": "Node CPU",
   "tags": [
     "monitoring-stack",
     "node-exporter"
@@ -16,11 +16,11 @@
   },
   "links": [
     {
-      "title": "CPU",
+      "title": "Overview",
       "type": "link",
       "icon": "dashboard",
-      "url": "/d/node-cpu",
-      "tooltip": "CPU detail",
+      "url": "/d/node-overview",
+      "tooltip": "Node Overview",
       "keepTime": true,
       "includeVars": true,
       "targetBlank": false
@@ -79,51 +79,13 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Uptime",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - node_boot_time_seconds{instance=~\"$instance\"}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 1
-    },
-    {
-      "type": "stat",
       "title": "CPU Usage",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 6,
+        "x": 0,
         "y": 0,
         "w": 6,
         "h": 4
@@ -151,11 +113,49 @@
           ]
         }
       },
+      "id": 1
+    },
+    {
+      "type": "stat",
+      "title": "CPU Cores",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(count by (instance, cpu) (node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "id": 2
     },
     {
       "type": "stat",
-      "title": "Memory Used",
+      "title": "Processes Running",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -172,13 +172,13 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 - (node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"} * 100)",
+          "expr": "node_procs_running{instance=~\"$instance\"}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -193,7 +193,7 @@
     },
     {
       "type": "stat",
-      "title": "Root FS Used",
+      "title": "Processes Blocked",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -210,13 +210,26 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 - (node_filesystem_avail_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!=\"rootfs\"} * 100)",
+          "expr": "node_procs_blocked{instance=~\"$instance\"}",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percent"
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -263,7 +276,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Load Average",
+      "title": "CPU Usage per Core",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -271,6 +284,38 @@
       "gridPos": {
         "x": 12,
         "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 - (avg by (instance, cpu) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
+          "refId": "A",
+          "legendFormat": "{{instance}} cpu{{cpu}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Load Average",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
         "w": 12,
         "h": 8
       },
@@ -309,52 +354,11 @@
         },
         "overrides": []
       },
-      "id": 6
-    },
-    {
-      "type": "timeseries",
-      "title": "Memory",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_memory_MemTotal_bytes{instance=~\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Total"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_memory_MemAvailable_bytes{instance=~\"$instance\"}",
-          "refId": "B",
-          "legendFormat": "Available"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
       "id": 7
     },
     {
       "type": "timeseries",
-      "title": "Filesystem Used",
+      "title": "Context Switches & Interrupts",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -371,14 +375,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "1 - (node_filesystem_avail_bytes{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"})",
+          "expr": "rate(node_context_switches_total{instance=~\"$instance\"}[5m])",
           "refId": "A",
-          "legendFormat": "{{mountpoint}}"
+          "legendFormat": "{{instance}} context switches/s"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_intr_total{instance=~\"$instance\"}[5m])",
+          "refId": "B",
+          "legendFormat": "{{instance}} interrupts/s"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -386,7 +399,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Disk I/O",
+      "title": "Forks",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -403,23 +416,14 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_disk_read_bytes_total{instance=~\"$instance\"}[5m])",
+          "expr": "rate(node_forks_total{instance=~\"$instance\"}[5m])",
           "refId": "A",
-          "legendFormat": "Read {{device}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "rate(node_disk_written_bytes_total{instance=~\"$instance\"}[5m])",
-          "refId": "B",
-          "legendFormat": "Write {{device}}"
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -427,7 +431,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Network Traffic",
+      "title": "Running / Blocked Processes",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -444,23 +448,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_receive_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "node_procs_running{instance=~\"$instance\"}",
           "refId": "A",
-          "legendFormat": "RX {{device}}"
+          "legendFormat": "{{instance}} running"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_transmit_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "node_procs_blocked{instance=~\"$instance\"}",
           "refId": "B",
-          "legendFormat": "TX {{device}}"
+          "legendFormat": "{{instance}} blocked"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps"
+          "unit": "short"
         },
         "overrides": []
       },

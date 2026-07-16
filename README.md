@@ -15,7 +15,7 @@ unit.
 | `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **not** the base |
 | `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **not** the base |
 | `metrics-stack-exporter-ipmi` | ipmi_exporter (local host BMC: temp/power/fan/voltage) | Podman only — **not** the base |
-| `metrics-stack-dashboards-node` | Starter "Node Overview" Grafana dashboard | nothing (pure data) |
+| `metrics-stack-dashboards-node` | Starter node_exporter Grafana dashboards: overview + CPU/memory/network/disk detail | nothing (pure data) |
 | `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-ipmi` | Starter "IPMI Overview" Grafana dashboard | nothing (pure data) |
 
@@ -284,8 +284,20 @@ datasource.
 Three starter dashboards ship as their own packages rather than being
 bundled into the base — see [Packages](#packages):
 
-- `metrics-stack-dashboards-node` — "Node Overview": CPU, memory, disk,
-  network, per-instance via a template variable.
+- `metrics-stack-dashboards-node` — five dashboards, all templated over
+  `$instance` and cross-linked via the top nav bar so you can drill down
+  from the summary into a specific resource and back:
+  - "Node Overview" — homepage: uptime, CPU/memory/root-fs stat tiles, and
+    one at-a-glance graph each for CPU, load, memory, filesystem, disk I/O,
+    and network.
+  - "Node CPU" — per-core usage, load average, context switches/interrupts,
+    forks, running/blocked processes.
+  - "Node Memory" — memory breakdown (total/available/free/cached/buffers),
+    active/inactive, swap, page faults, slab/page tables, dirty/writeback.
+  - "Node Network" — traffic and packet rate per device, receive/transmit
+    errors and drops, active TCP connections, an interface info table.
+  - "Node Disk" — filesystem and inode usage per mountpoint, disk I/O bytes
+    and ops, utilization, read/write latency.
 - `metrics-stack-dashboards-smartctl` — "smartctl Overview": overall SMART
   health, temperature, power-on time/cycles, a device info table, a
   templated view over any SMART attribute (`$attribute`, since attribute
@@ -359,6 +371,10 @@ packages/
 
   metrics-stack-dashboards-node/
     dashboards/node-overview.json
+    dashboards/node-cpu.json
+    dashboards/node-memory.json
+    dashboards/node-network.json
+    dashboards/node-disk.json
     packaging/manifest.sh                    # no scriptlets needed
 
   metrics-stack-dashboards-smartctl/

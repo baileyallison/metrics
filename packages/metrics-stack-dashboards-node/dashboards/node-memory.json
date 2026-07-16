@@ -1,7 +1,7 @@
 {
   "id": null,
-  "uid": "node-overview",
-  "title": "Node Overview",
+  "uid": "node-memory",
+  "title": "Node Memory",
   "tags": [
     "monitoring-stack",
     "node-exporter"
@@ -16,21 +16,21 @@
   },
   "links": [
     {
-      "title": "CPU",
+      "title": "Overview",
       "type": "link",
       "icon": "dashboard",
-      "url": "/d/node-cpu",
-      "tooltip": "CPU detail",
+      "url": "/d/node-overview",
+      "tooltip": "Node Overview",
       "keepTime": true,
       "includeVars": true,
       "targetBlank": false
     },
     {
-      "title": "Memory",
+      "title": "CPU",
       "type": "link",
       "icon": "dashboard",
-      "url": "/d/node-memory",
-      "tooltip": "Memory detail",
+      "url": "/d/node-cpu",
+      "tooltip": "CPU detail",
       "keepTime": true,
       "includeVars": true,
       "targetBlank": false
@@ -79,89 +79,13 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Uptime",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - node_boot_time_seconds{instance=~\"$instance\"}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 1
-    },
-    {
-      "type": "stat",
-      "title": "CPU Usage",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 2
-    },
-    {
-      "type": "stat",
       "title": "Memory Used",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 12,
+        "x": 0,
         "y": 0,
         "w": 6,
         "h": 4
@@ -189,17 +113,17 @@
           ]
         }
       },
-      "id": 3
+      "id": 1
     },
     {
       "type": "stat",
-      "title": "Root FS Used",
+      "title": "Memory Available",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 18,
+        "x": 6,
         "y": 0,
         "w": 6,
         "h": 4
@@ -210,7 +134,45 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 - (node_filesystem_avail_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!=\"rootfs\"} / node_filesystem_size_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!=\"rootfs\"} * 100)",
+          "expr": "node_memory_MemAvailable_bytes{instance=~\"$instance\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Swap Used",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "100 - (node_memory_SwapFree_bytes{instance=~\"$instance\"} / node_memory_SwapTotal_bytes{instance=~\"$instance\"} * 100)",
           "refId": "A"
         }
       ],
@@ -227,11 +189,49 @@
           ]
         }
       },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Cached",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_Cached_bytes{instance=~\"$instance\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
       "id": 4
     },
     {
       "type": "timeseries",
-      "title": "CPU Usage by Mode",
+      "title": "Memory Breakdown",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -239,88 +239,6 @@
       "gridPos": {
         "x": 0,
         "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "avg by (mode) (rate(node_cpu_seconds_total{instance=~\"$instance\"}[5m])) * 100",
-          "refId": "A",
-          "legendFormat": "{{mode}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "id": 5
-    },
-    {
-      "type": "timeseries",
-      "title": "Load Average",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load1{instance=~\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "1m"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load5{instance=~\"$instance\"}",
-          "refId": "B",
-          "legendFormat": "5m"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load15{instance=~\"$instance\"}",
-          "refId": "C",
-          "legendFormat": "15m"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "id": 6
-    },
-    {
-      "type": "timeseries",
-      "title": "Memory",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 12,
         "w": 12,
         "h": 8
       },
@@ -342,6 +260,115 @@
           "expr": "node_memory_MemAvailable_bytes{instance=~\"$instance\"}",
           "refId": "B",
           "legendFormat": "Available"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_MemFree_bytes{instance=~\"$instance\"}",
+          "refId": "C",
+          "legendFormat": "Free"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_Cached_bytes{instance=~\"$instance\"}",
+          "refId": "D",
+          "legendFormat": "Cached"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_Buffers_bytes{instance=~\"$instance\"}",
+          "refId": "E",
+          "legendFormat": "Buffers"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "id": 5
+    },
+    {
+      "type": "timeseries",
+      "title": "Active / Inactive Memory",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_Active_bytes{instance=~\"$instance\"}",
+          "refId": "A",
+          "legendFormat": "Active"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_Inactive_bytes{instance=~\"$instance\"}",
+          "refId": "B",
+          "legendFormat": "Inactive"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Swap Usage",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_SwapTotal_bytes{instance=~\"$instance\"}",
+          "refId": "A",
+          "legendFormat": "Total"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "node_memory_SwapFree_bytes{instance=~\"$instance\"}",
+          "refId": "B",
+          "legendFormat": "Free"
         }
       ],
       "fieldConfig": {
@@ -354,7 +381,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Filesystem Used",
+      "title": "Page Faults",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -371,14 +398,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "1 - (node_filesystem_avail_bytes{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"} / node_filesystem_size_bytes{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"})",
+          "expr": "rate(node_vmstat_pgfault{instance=~\"$instance\"}[5m])",
           "refId": "A",
-          "legendFormat": "{{mountpoint}}"
+          "legendFormat": "{{instance}} faults/s"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_vmstat_pgmajfault{instance=~\"$instance\"}[5m])",
+          "refId": "B",
+          "legendFormat": "{{instance}} major faults/s"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "percentunit"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -386,7 +422,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Disk I/O",
+      "title": "Slab & Page Tables",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -403,23 +439,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_disk_read_bytes_total{instance=~\"$instance\"}[5m])",
+          "expr": "node_memory_Slab_bytes{instance=~\"$instance\"}",
           "refId": "A",
-          "legendFormat": "Read {{device}}"
+          "legendFormat": "Slab"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_disk_written_bytes_total{instance=~\"$instance\"}[5m])",
+          "expr": "node_memory_PageTables_bytes{instance=~\"$instance\"}",
           "refId": "B",
-          "legendFormat": "Write {{device}}"
+          "legendFormat": "Page Tables"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -427,7 +463,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Network Traffic",
+      "title": "Dirty & Writeback",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -444,23 +480,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_receive_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "node_memory_Dirty_bytes{instance=~\"$instance\"}",
           "refId": "A",
-          "legendFormat": "RX {{device}}"
+          "legendFormat": "Dirty"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_transmit_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "node_memory_Writeback_bytes{instance=~\"$instance\"}",
           "refId": "B",
-          "legendFormat": "TX {{device}}"
+          "legendFormat": "Writeback"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps"
+          "unit": "bytes"
         },
         "overrides": []
       },

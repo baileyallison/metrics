@@ -205,6 +205,10 @@ jobs:
           titles = [r.get('title', '') for r in results]
           print(titles)
           assert any('Node Overview' in t for t in titles), 'node-overview dashboard not found'
+          assert any('Node CPU' in t for t in titles), 'node-cpu dashboard not found'
+          assert any('Node Memory' in t for t in titles), 'node-memory dashboard not found'
+          assert any('Node Network' in t for t in titles), 'node-network dashboard not found'
+          assert any('Node Disk' in t for t in titles), 'node-disk dashboard not found'
           assert any('smartctl Overview' in t for t in titles), 'smartctl-overview dashboard not found'
           assert any('IPMI Overview' in t for t in titles), 'ipmi-overview dashboard not found'
           "; then
@@ -322,6 +326,10 @@ jobs:
           test -f /etc/containers/systemd/node-exporter.container
           test -f /usr/bin/monitoring-add-exporter
           test -f /var/lib/grafana/dashboards/node-overview.json
+          test -f /var/lib/grafana/dashboards/node-cpu.json
+          test -f /var/lib/grafana/dashboards/node-memory.json
+          test -f /var/lib/grafana/dashboards/node-network.json
+          test -f /var/lib/grafana/dashboards/node-disk.json
           mode="$(stat -c '%a' /etc/alertmanager/alertmanager.yml)"
           [ "$mode" = "640" ] || { echo "alertmanager.yml is mode $mode, expected 640"; exit 1; }
 

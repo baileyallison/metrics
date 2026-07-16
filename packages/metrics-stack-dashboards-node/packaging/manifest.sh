@@ -10,4 +10,4 @@
 # Grafana ends up looking for them, without hard-requiring a local Grafana
 # install on the same host.
 PKG_NAME="metrics-stack-dashboards-node"
-PKG_DESCRIPTION="Starter Grafana dashboard for node_exporter metrics (CPU/memory/disk/network). Drop-in file; pairs with metrics-stack + metrics-stack-exporter-node but doesn't require them."
+PKG_DESCRIPTION="Starter Grafana dashboards for node_exporter metrics: an overview homepage plus CPU/memory/network/disk detail pages, cross-linked. Drop-in files; pairs with metrics-stack + metrics-stack-exporter-node but doesn't require them."

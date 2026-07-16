@@ -1,7 +1,7 @@
 {
   "id": null,
-  "uid": "node-overview",
-  "title": "Node Overview",
+  "uid": "node-disk",
+  "title": "Node Disk",
   "tags": [
     "monitoring-stack",
     "node-exporter"
@@ -15,6 +15,16 @@
     "to": "now"
   },
   "links": [
+    {
+      "title": "Overview",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/node-overview",
+      "tooltip": "Node Overview",
+      "keepTime": true,
+      "includeVars": true,
+      "targetBlank": false
+    },
     {
       "title": "CPU",
       "type": "link",
@@ -44,16 +54,6 @@
       "keepTime": true,
       "includeVars": true,
       "targetBlank": false
-    },
-    {
-      "title": "Disk",
-      "type": "link",
-      "icon": "dashboard",
-      "url": "/d/node-disk",
-      "tooltip": "Disk detail",
-      "keepTime": true,
-      "includeVars": true,
-      "targetBlank": false
     }
   ],
   "templating": {
@@ -79,127 +79,13 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Uptime",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "time() - node_boot_time_seconds{instance=~\"$instance\"}",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 1
-    },
-    {
-      "type": "stat",
-      "title": "CPU Usage",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])) * 100)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 2
-    },
-    {
-      "type": "stat",
-      "title": "Memory Used",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "100 - (node_memory_MemAvailable_bytes{instance=~\"$instance\"} / node_memory_MemTotal_bytes{instance=~\"$instance\"} * 100)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "id": 3
-    },
-    {
-      "type": "stat",
       "title": "Root FS Used",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 18,
+        "x": 0,
         "y": 0,
         "w": 6,
         "h": 4
@@ -227,20 +113,20 @@
           ]
         }
       },
-      "id": 4
+      "id": 1
     },
     {
-      "type": "timeseries",
-      "title": "CPU Usage by Mode",
+      "type": "stat",
+      "title": "Root FS Free",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 12,
-        "h": 8
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
       },
       "targets": [
         {
@@ -248,100 +134,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "avg by (mode) (rate(node_cpu_seconds_total{instance=~\"$instance\"}[5m])) * 100",
-          "refId": "A",
-          "legendFormat": "{{mode}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "id": 5
-    },
-    {
-      "type": "timeseries",
-      "title": "Load Average",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 4,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load1{instance=~\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "1m"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load5{instance=~\"$instance\"}",
-          "refId": "B",
-          "legendFormat": "5m"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_load15{instance=~\"$instance\"}",
-          "refId": "C",
-          "legendFormat": "15m"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "id": 6
-    },
-    {
-      "type": "timeseries",
-      "title": "Memory",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 12,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_memory_MemTotal_bytes{instance=~\"$instance\"}",
-          "refId": "A",
-          "legendFormat": "Total"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "node_memory_MemAvailable_bytes{instance=~\"$instance\"}",
-          "refId": "B",
-          "legendFormat": "Available"
+          "expr": "node_filesystem_avail_bytes{instance=~\"$instance\",mountpoint=\"/\",fstype!=\"rootfs\"}",
+          "refId": "A"
         }
       ],
       "fieldConfig": {
@@ -350,7 +144,90 @@
         },
         "overrides": []
       },
-      "id": 7
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "Disk Read Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(node_disk_read_bytes_total{instance=~\"$instance\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "Disk Write Rate",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(node_disk_written_bytes_total{instance=~\"$instance\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 4
     },
     {
       "type": "timeseries",
@@ -360,8 +237,8 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 12,
-        "y": 12,
+        "x": 0,
+        "y": 4,
         "w": 12,
         "h": 8
       },
@@ -382,18 +259,50 @@
         },
         "overrides": []
       },
-      "id": 8
+      "id": 5
     },
     {
       "type": "timeseries",
-      "title": "Disk I/O",
+      "title": "Inode Usage",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "1 - (node_filesystem_files_free{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"} / node_filesystem_files{instance=~\"$instance\",fstype!~\"tmpfs|overlay\"})",
+          "refId": "A",
+          "legendFormat": "{{mountpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "id": 6
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk I/O Bytes",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 12,
         "w": 12,
         "h": 8
       },
@@ -423,11 +332,84 @@
         },
         "overrides": []
       },
+      "id": 7
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk I/O Operations",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_disk_reads_completed_total{instance=~\"$instance\"}[5m])",
+          "refId": "A",
+          "legendFormat": "Reads {{device}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_disk_writes_completed_total{instance=~\"$instance\"}[5m])",
+          "refId": "B",
+          "legendFormat": "Writes {{device}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "iops"
+        },
+        "overrides": []
+      },
+      "id": 8
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk Utilization",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(node_disk_io_time_seconds_total{instance=~\"$instance\"}[5m]) * 100",
+          "refId": "A",
+          "legendFormat": "{{device}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
       "id": 9
     },
     {
       "type": "timeseries",
-      "title": "Network Traffic",
+      "title": "Disk I/O Latency",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -444,23 +426,23 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_receive_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "rate(node_disk_read_time_seconds_total{instance=~\"$instance\"}[5m]) / rate(node_disk_reads_completed_total{instance=~\"$instance\"}[5m])",
           "refId": "A",
-          "legendFormat": "RX {{device}}"
+          "legendFormat": "Read {{device}}"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_transmit_bytes_total{instance=~\"$instance\",device!=\"lo\"}[5m])",
+          "expr": "rate(node_disk_write_time_seconds_total{instance=~\"$instance\"}[5m]) / rate(node_disk_writes_completed_total{instance=~\"$instance\"}[5m])",
           "refId": "B",
-          "legendFormat": "TX {{device}}"
+          "legendFormat": "Write {{device}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "Bps"
+          "unit": "s"
         },
         "overrides": []
       },
