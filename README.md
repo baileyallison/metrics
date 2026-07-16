@@ -56,12 +56,16 @@ sudo apt install ./metrics-stack-dashboards-ipmi_<version>-1_all.deb
 Podman is pulled in as a dependency automatically; each package's
 post-install step deploys its Quadlet unit(s), validates config where
 applicable, and starts everything. Real `%config(noreplace)`/conffile
-handling means local edits survive upgrades, and `dnf remove`/`apt remove`
+handling means local edits survive upgrades, and `dnf remove`/`apt purge`
 cleanly uninstalls — stopping the service, deregistering the exporter's
 Prometheus target, closing the firewall port the install opened, and
 reloading systemd so no stale Quadlet-generated unit lingers (your data
 under `/var/lib/{prometheus,alertmanager,grafana}` isn't part of any
-package manifest, so it survives removal either way).
+package manifest, so it survives removal either way). One Debian-specific
+caveat: plain `apt remove` (without purge) keeps conffiles on disk per
+standard dpkg semantics — and since the Quadlet `.container` unit *is* a
+conffile, the service stays defined and would start again on reboot. Use
+`apt purge` to remove a package's services for good.
 
 To try out unreleased changes without waiting for a tagged release, build
 packages locally instead — see [Releasing](#releasing).
@@ -155,9 +159,9 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
      themselves as Prometheus targets with no manual step, confirms alerting
      rules loaded and the starter dashboards were provisioned, reinstalls
      the base and an exporter to prove the upgrade path leaves services
-     running and targets registered, then uninstalls an exporter and
-     confirms its target file, firewall rule, and generated systemd unit
-     were cleaned up.
+     running and targets registered, then purges an exporter and confirms
+     its target file, firewall rule, and generated systemd unit were
+     cleaned up.
    - **smoke-test-rocky** — installs the *actual built* `.rpm`s inside a
      plain `rockylinux:9` container. Deliberately narrower scope than the
      Ubuntu lane: a container has no systemd as PID 1, so the `%post`

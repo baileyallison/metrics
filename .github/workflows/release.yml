@@ -244,7 +244,13 @@ jobs:
 
       - name: Uninstall an exporter and confirm target cleanup
         run: |
-          sudo apt remove -y metrics-stack-exporter-node
+          # purge, not remove: the Quadlet .container file ships as a dpkg
+          # conffile, and plain `apt remove` deliberately leaves conffiles
+          # on disk (standard Debian semantics), which keeps the generated
+          # unit defined. Only purge deletes it -- after which the postrm
+          # daemon-reload must leave no trace of the unit. (dnf remove
+          # deletes config files outright, so rpm has no equivalent split.)
+          sudo apt purge -y metrics-stack-exporter-node
           sleep 2
           if [ -f /etc/prometheus/targets.d/node.yml ]; then
             echo "node.yml target file was not cleaned up on removal"
