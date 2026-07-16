@@ -1,0 +1,5 @@
+# Local build output from packaging/build.sh
+dist/
+
+# Per-machine Claude Code settings (permission grants, local paths)
+.claude/settings.local.json

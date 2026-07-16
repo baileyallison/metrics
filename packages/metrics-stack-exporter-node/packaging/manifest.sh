@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack-exporter-node, read by packaging/build.sh.
 PKG_NAME="metrics-stack-exporter-node"
 PKG_DESCRIPTION="node_exporter for metrics-stack. Standalone -- installs and runs with or without the metrics-stack base package present."

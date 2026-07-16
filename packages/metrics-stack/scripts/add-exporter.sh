@@ -19,6 +19,7 @@ within 30 seconds; no restart needed.
 Examples:
   monitoring-add-exporter mysql db1.example.com:9104
   monitoring-add-exporter mysql db1.example.com:9104 db2.example.com:9104
+  monitoring-add-exporter node [2001:db8::1]:9100    # IPv6: bracket the address
 
 To remove a job, delete /etc/prometheus/targets.d/<job-name>.yml.
 EOF
@@ -37,8 +38,10 @@ if [[ ! "$job" =~ ^[a-zA-Z0-9_-]+$ ]]; then
   exit 1
 fi
 
+# Hostname/IPv4 like db1.example.com:9104, or bracketed IPv6 like
+# [2001:db8::1]:9104 (the bracket form is what Prometheus expects).
 for hp in "$@"; do
-  if [[ ! "$hp" =~ ^[a-zA-Z0-9.-]+:[0-9]+$ ]]; then
+  if [[ ! "$hp" =~ ^([a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\]):[0-9]+$ ]]; then
     echo "error: invalid host:port '$hp'" >&2
     exit 1
   fi

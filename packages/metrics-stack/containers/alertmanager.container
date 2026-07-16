@@ -1,7 +1,7 @@
 # managed by metrics-stack
-# Version control: bump the Image= tag below, commit, then
-# `sudo ./install.sh` (or `daemon-reload && systemctl restart alertmanager`)
-# to roll it out. Check https://hub.docker.com/r/prom/alertmanager/tags for
+# Version control: bump the Image= tag below, commit, then cut a release
+# (see README "Releasing"); hosts pick it up via `dnf upgrade metrics-stack`
+# / `apt upgrade`. Check https://hub.docker.com/r/prom/alertmanager/tags for
 # newer releases before bumping.
 #
 # Normally you won't edit this file's config by hand at all --

@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack-exporter-smartctl, read by packaging/build.sh.
 PKG_NAME="metrics-stack-exporter-smartctl"
 PKG_DESCRIPTION="smartctl_exporter for metrics-stack (disk S.M.A.R.T. metrics). Standalone -- installs and runs with or without the metrics-stack base package present."

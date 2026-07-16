@@ -82,7 +82,7 @@ print(json.dumps(data, indent=2))
 PYEOF
 )"
 
-title="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('title', '$title_hint'))" "$out_json")"
+title="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("title") or sys.argv[2])' "$out_json" "$title_hint")"
 slug="$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')"
 [[ -z "$slug" ]] && slug="$title_hint"
 

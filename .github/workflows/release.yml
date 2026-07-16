@@ -1,11 +1,25 @@
 name: Build and release packages
 
+# Tags release; pushes to main and PRs get the same build + smoke tests so
+# breakage surfaces when it lands, not at the next release. Only the
+# release job itself is tag-gated.
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck every tracked shell script
+        run: git ls-files '*.sh' | xargs shellcheck
+
   build:
     runs-on: ubuntu-24.04
     steps:
@@ -17,9 +31,16 @@ jobs:
           sudo apt-get install -y ruby ruby-dev build-essential rpm
           sudo gem install --no-document fpm
 
-      - name: Determine version from tag
+      - name: Determine version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        # Real version from the tag on release builds; a throwaway
+        # 0.0.0.ci<run> version for branch/PR builds.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0.ci${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build packages
         run: ./packaging/build.sh "${{ steps.version.outputs.version }}"
@@ -199,12 +220,40 @@ jobs:
             exit 1
           fi
 
+      - name: Reinstall packages and confirm the upgrade path leaves them running
+        run: |
+          # apt install --reinstall drives the same maintainer-script sequence
+          # as an upgrade (prerm "upgrade" -> unpack -> postinst "configure"),
+          # so this regression-tests the preremove scripts' upgrade guard:
+          # services must still be running and the exporter's target still
+          # registered afterward, not stopped/deregistered by the old
+          # package's prerm.
+          sudo apt install -y --reinstall ./dist/metrics-stack_*.deb
+          sudo apt install -y --reinstall ./dist/metrics-stack-exporter-node_*.deb
+          for svc in prometheus alertmanager grafana node-exporter; do
+            if ! systemctl is-active --quiet "$svc"; then
+              echo "$svc is not active after reinstall"
+              systemctl status "$svc" --no-pager || true
+              exit 1
+            fi
+          done
+          if [ ! -f /etc/prometheus/targets.d/node.yml ]; then
+            echo "node.yml target file went missing across a reinstall"
+            exit 1
+          fi
+
       - name: Uninstall an exporter and confirm target cleanup
         run: |
           sudo apt remove -y metrics-stack-exporter-node
           sleep 2
           if [ -f /etc/prometheus/targets.d/node.yml ]; then
             echo "node.yml target file was not cleaned up on removal"
+            exit 1
+          fi
+          # The postrm daemon-reload should leave no stale Quadlet-generated
+          # unit behind once the .container file is gone.
+          if systemctl cat node-exporter.service >/dev/null 2>&1; then
+            echo "node-exporter.service still known to systemd after removal"
             exit 1
           fi
 
@@ -288,7 +337,10 @@ jobs:
           dnf history list || true
 
   release:
-    needs: [smoke-test-ubuntu, smoke-test-rocky]
+    # Only tag pushes publish a release; branch/PR runs stop after the
+    # smoke tests.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, smoke-test-ubuntu, smoke-test-rocky]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -300,7 +352,9 @@ jobs:
           path: dist
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        # Third-party action pinned by commit SHA (v2.4.0) rather than a
+        # movable tag.
+        uses: softprops/action-gh-release@aec2ec56f94eb8180ceec724245f64ef008b89f5 # v2.4.0
         with:
           files: dist/*
           fail_on_unmatched_files: true

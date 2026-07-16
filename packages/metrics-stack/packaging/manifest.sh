@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack, read by packaging/build.sh.
 PKG_NAME="metrics-stack"
 PKG_DESCRIPTION="Prometheus/Alertmanager/Grafana monitoring stack base (Podman Quadlet containers). Add exporters via the separate metrics-stack-exporter-* packages."
@@ -42,3 +43,4 @@ PKG_DIRECTORIES=(
 
 PKG_POSTINSTALL="packaging/postinstall.sh"
 PKG_PREREMOVE="packaging/preremove.sh"
+PKG_POSTREMOVE="packaging/postremove.sh"

@@ -8,8 +8,9 @@
 # Needs --privileged (via PodmanArgs) and to run as root so smartctl can
 # issue SG_IO ioctls against raw block devices -- there's no meaningful way
 # to run this one rootless/unprivileged. Network=host for the same
-# standalone-install reasoning as node-exporter (see its packaging/
-# postinstall.sh): this package doesn't depend on the metrics-stack base.
+# standalone-install reasoning as node-exporter (see packaging/templates/
+# exporter-postinstall.sh): this package doesn't depend on the metrics-stack
+# base.
 [Unit]
 Description=smartctl Exporter
 After=network-online.target

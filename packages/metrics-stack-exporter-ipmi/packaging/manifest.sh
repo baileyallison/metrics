@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack-exporter-ipmi, read by packaging/build.sh.
 PKG_NAME="metrics-stack-exporter-ipmi"
 PKG_DESCRIPTION="ipmi_exporter for metrics-stack (local host IPMI/BMC sensors: temperature, power, fans, voltage). Standalone -- installs and runs with or without the metrics-stack base package present."

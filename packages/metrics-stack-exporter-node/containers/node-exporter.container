@@ -1,15 +1,17 @@
 # managed by metrics-stack
-# Version control: bump the Image= tag below, commit, then
-# `sudo ./install.sh` (or `daemon-reload && systemctl restart node-exporter`)
-# to roll it out. Check https://hub.docker.com/r/prom/node-exporter/tags for
-# newer releases before bumping.
+# Version control: bump the Image= tag below, commit, then cut a release
+# (see README "Releasing"); hosts pick it up via `dnf upgrade` / `apt
+# upgrade` of this package. Check
+# https://hub.docker.com/r/prom/node-exporter/tags for newer releases
+# before bumping.
 #
 # Network=host (not the metrics-stack base's shared 'metrics' network,
 # which this package doesn't require or depend on) so node-exporter reports
 # the host's real network interfaces rather than a container's, and so this
 # package installs standalone on any host you want metrics from -- with or
 # without the metrics-stack base package present locally. See
-# packaging/postinstall.sh for how it registers itself with Prometheus.
+# packaging/templates/exporter-postinstall.sh for how it registers itself
+# with Prometheus.
 [Unit]
 Description=Node Exporter
 After=network-online.target

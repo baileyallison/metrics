@@ -57,8 +57,11 @@ Podman is pulled in as a dependency automatically; each package's
 post-install step deploys its Quadlet unit(s), validates config where
 applicable, and starts everything. Real `%config(noreplace)`/conffile
 handling means local edits survive upgrades, and `dnf remove`/`apt remove`
-cleanly uninstalls (your data under `/var/lib/{prometheus,alertmanager,grafana}`
-isn't part of any package manifest, so it survives removal either way).
+cleanly uninstalls — stopping the service, deregistering the exporter's
+Prometheus target, closing the firewall port the install opened, and
+reloading systemd so no stale Quadlet-generated unit lingers (your data
+under `/var/lib/{prometheus,alertmanager,grafana}` isn't part of any
+package manifest, so it survives removal either way).
 
 To try out unreleased changes without waiting for a tagged release, build
 packages locally instead — see [Releasing](#releasing).
@@ -130,14 +133,18 @@ Check each image's tag list before bumping:
 
 ## Releasing
 
-Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
+`.github/workflows/release.yml` runs on every push to `main` and every pull
+request as well as on tags, so packaging breakage surfaces when it lands
+rather than at the next release — only the final release-publishing job is
+tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
 
-1. **build** — runs `packaging/build.sh <version>` (version taken from the
-   tag) to produce a `.rpm` and `.deb` for every package under `packages/*/`
-   via [fpm](https://github.com/jordansissel/fpm), sanity-checks each
-   `.rpm`'s file list with `rpm -qlp`, and uploads them as a workflow
-   artifact.
-2. **smoke-test-ubuntu** and **smoke-test-rocky** run in parallel, each only
+1. **lint** — shellchecks every tracked shell script.
+2. **build** — runs `packaging/build.sh <version>` (version taken from the
+   tag; branch/PR runs use a throwaway `0.0.0.ci<run>` version) to produce
+   a `.rpm` and `.deb` for every package under `packages/*/` via
+   [fpm](https://github.com/jordansissel/fpm), sanity-checks each `.rpm`'s
+   file list with `rpm -qlp`, and uploads them as a workflow artifact.
+3. **smoke-test-ubuntu** and **smoke-test-rocky** run in parallel, each only
    depending on `build`:
    - **smoke-test-ubuntu** — on a live Ubuntu 24.04 GitHub-hosted runner (a
      real systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt
@@ -146,8 +153,11 @@ Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
      Prometheus/Alertmanager/Grafana/both exporters are healthy, confirms
      node_exporter/smartctl_exporter/ipmi_exporter **auto-registered**
      themselves as Prometheus targets with no manual step, confirms alerting
-     rules loaded and the starter dashboards were provisioned, then
-     uninstalls an exporter and confirms its target file was cleaned up.
+     rules loaded and the starter dashboards were provisioned, reinstalls
+     the base and an exporter to prove the upgrade path leaves services
+     running and targets registered, then uninstalls an exporter and
+     confirms its target file, firewall rule, and generated systemd unit
+     were cleaned up.
    - **smoke-test-rocky** — installs the *actual built* `.rpm`s inside a
      plain `rockylinux:9` container. Deliberately narrower scope than the
      Ubuntu lane: a container has no systemd as PID 1, so the `%post`
@@ -162,8 +172,8 @@ Pushing a `v*` tag (e.g. `v1.1.0`) triggers `.github/workflows/release.yml`:
      (Rocky enforces SELinux by default; Ubuntu doesn't) — that would need
      a real systemd environment (nested KVM or a self-hosted runner), a
      bigger step taken only if this lighter check turns up a reason to.
-3. **release** — only runs if both smoke-test jobs pass; attaches every
-   built package to the GitHub Release for that tag.
+4. **release** — tag pushes only, and only if lint and both smoke-test jobs
+   pass; attaches every built package to the GitHub Release for that tag.
 
 To cut a release:
 
@@ -328,7 +338,8 @@ packages/
     packaging/
       manifest.sh                            # read by packaging/build.sh
       postinstall.sh                         # %post / postinst
-      preremove.sh                           # %preun / prerm
+      preremove.sh                           # %preun / prerm (uninstall only, not upgrade)
+      postremove.sh                          # %postun / postrm (daemon-reload)
 
   metrics-stack-exporter-node/
     containers/node-exporter.container
@@ -357,8 +368,9 @@ packages/
 packaging/
   build.sh                                   # generic: builds every packages/*/ into .rpm+.deb
   templates/
-    exporter-postinstall.sh                  # shared template for all standalone exporter packages
+    exporter-postinstall.sh                  # shared templates for all standalone exporter packages
     exporter-preremove.sh                    # (node/smartctl/ipmi differ only in 4 PKG_EXPORTER_* values)
+    exporter-postremove.sh                   # daemon-reload after removal (no substitutions)
 
 .github/workflows/
   release.yml                                # tag-triggered: build, smoke-test, release

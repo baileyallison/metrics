@@ -77,14 +77,19 @@ fi
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
+# Render a value as a YAML single-quoted scalar; a literal ' inside one is
+# escaped by doubling it, so e.g. an SMTP password containing a quote can't
+# break the generated config.
+yaml_sq() { printf "'%s'" "${1//\'/\'\'}"; }
+
 {
   echo "# managed by metrics-stack: monitoring-configure-email"
   echo "global:"
-  echo "  smtp_smarthost: '$smtp_host'"
-  echo "  smtp_from: '$from'"
+  echo "  smtp_smarthost: $(yaml_sq "$smtp_host")"
+  echo "  smtp_from: $(yaml_sq "$from")"
   if [[ -n "$user" ]]; then
-    echo "  smtp_auth_username: '$user'"
-    echo "  smtp_auth_password: '$password'"
+    echo "  smtp_auth_username: $(yaml_sq "$user")"
+    echo "  smtp_auth_password: $(yaml_sq "$password")"
   fi
   echo "  smtp_require_tls: $require_tls"
   echo ""
@@ -105,7 +110,7 @@ trap 'rm -f "$tmp"' EXIT
   echo "receivers:"
   echo "  - name: email"
   echo "    email_configs:"
-  echo "      - to: '$to'"
+  echo "      - to: $(yaml_sq "$to")"
   echo "        send_resolved: true"
 } > "$tmp"
 

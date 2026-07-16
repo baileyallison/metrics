@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack-dashboards-node, read by packaging/build.sh.
 # Pure data -- no service, no postinstall/preremove needed: Grafana's file
 # provisioning provider (shipped by the metrics-stack base package) already
@@ -23,3 +24,4 @@ PKG_DIRECTORIES=()
 
 PKG_POSTINSTALL=""
 PKG_PREREMOVE=""
+PKG_POSTREMOVE=""

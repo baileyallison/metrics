@@ -50,11 +50,12 @@ build_package() {
   PKG_DIRECTORIES=()
   PKG_POSTINSTALL=""
   PKG_PREREMOVE=""
+  PKG_POSTREMOVE=""
   PKG_EXPORTER_SERVICE=""
   PKG_EXPORTER_JOB=""
   PKG_EXPORTER_PORT=""
   PKG_EXPORTER_NOTE=""
-  # shellcheck disable=SC1090
+  # shellcheck disable=SC1090,SC1091
   source "$pkg_dir/packaging/manifest.sh"
 
   echo "=== building $PKG_NAME ==="
@@ -105,14 +106,19 @@ build_package() {
     mkdir -p "$stage/.scripts"
     render_template "$TEMPLATES_DIR/exporter-postinstall.sh" > "$stage/.scripts/postinstall.sh"
     render_template "$TEMPLATES_DIR/exporter-preremove.sh" > "$stage/.scripts/preremove.sh"
+    render_template "$TEMPLATES_DIR/exporter-postremove.sh" > "$stage/.scripts/postremove.sh"
     common_args+=(--after-install "$stage/.scripts/postinstall.sh")
     common_args+=(--before-remove "$stage/.scripts/preremove.sh")
+    common_args+=(--after-remove "$stage/.scripts/postremove.sh")
   else
     if [[ -n "$PKG_POSTINSTALL" ]]; then
       common_args+=(--after-install "$pkg_dir/$PKG_POSTINSTALL")
     fi
     if [[ -n "$PKG_PREREMOVE" ]]; then
       common_args+=(--before-remove "$pkg_dir/$PKG_PREREMOVE")
+    fi
+    if [[ -n "$PKG_POSTREMOVE" ]]; then
+      common_args+=(--after-remove "$pkg_dir/$PKG_POSTREMOVE")
     fi
   fi
 

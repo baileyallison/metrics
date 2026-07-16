@@ -1,5 +1,6 @@
 # managed by metrics-stack
-# Local edits are preserved on reinstall unless --force-config is used.
+# Local edits survive package upgrades: this file ships as
+# %config(noreplace) (rpm) / a conffile (deb).
 
 global:
   scrape_interval: 15s
