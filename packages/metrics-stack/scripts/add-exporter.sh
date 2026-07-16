@@ -25,9 +25,14 @@ To remove a job, delete /etc/prometheus/targets.d/<job-name>.yml.
 EOF
 }
 
-if [[ $# -lt 2 ]] || [[ "$1" == "-h" || "$1" == "--help" ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
-  exit "$([[ $# -ge 2 ]] && echo 0 || echo 1)"
+  exit 0
+fi
+
+if [[ $# -lt 2 ]]; then
+  usage >&2
+  exit 1
 fi
 
 job="$1"

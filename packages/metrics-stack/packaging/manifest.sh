@@ -4,12 +4,10 @@ PKG_NAME="metrics-stack"
 PKG_DESCRIPTION="Prometheus/Alertmanager/Grafana monitoring stack base (Podman Quadlet containers). Add exporters via the separate metrics-stack-exporter-* packages."
 PKG_DEPENDS=(podman)
 
+# containers/ is staged to /etc/containers/systemd/ by convention (see
+# packaging/build.sh) -- only files outside that convention are listed here.
 # "mode:src(relative to this package dir):dest(absolute path on target)"
 PKG_FILES=(
-  "0644:containers/metrics.network:/etc/containers/systemd/metrics.network"
-  "0644:containers/prometheus.container:/etc/containers/systemd/prometheus.container"
-  "0644:containers/alertmanager.container:/etc/containers/systemd/alertmanager.container"
-  "0644:containers/grafana.container:/etc/containers/systemd/grafana.container"
   "0644:prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
   "0644:prometheus/rules.d/host-alerts.yml:/etc/prometheus/rules.d/host-alerts.yml"
   "0644:prometheus/rules.d/stack-alerts.yml:/etc/prometheus/rules.d/stack-alerts.yml"
@@ -22,11 +20,8 @@ PKG_FILES=(
   "0755:scripts/add-dashboard.sh:/usr/bin/monitoring-add-dashboard"
 )
 
+# Convention-staged files (containers/) are marked config automatically.
 PKG_CONFIG_FILES=(
-  /etc/containers/systemd/metrics.network
-  /etc/containers/systemd/prometheus.container
-  /etc/containers/systemd/alertmanager.container
-  /etc/containers/systemd/grafana.container
   /etc/prometheus/prometheus.yml
   /etc/prometheus/rules.d/host-alerts.yml
   /etc/prometheus/rules.d/stack-alerts.yml

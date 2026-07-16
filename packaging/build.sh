@@ -64,6 +64,26 @@ build_package() {
   stage="$(mktemp -d)"
   trap 'rm -rf "$stage"' RETURN
 
+  # Convention-staged content, so manifests don't repeat what the package
+  # directory layout already says: anything under containers/ ships to the
+  # Quadlet directory, and anything under dashboards/ ships to Grafana's
+  # provisioned-dashboards directory -- always mode 0644 and marked as a
+  # config file so local edits survive upgrades. Only files outside these
+  # two conventions need explicit PKG_FILES entries.
+  local f base
+  for f in "$pkg_dir"/containers/*; do
+    [[ -e "$f" ]] || continue
+    base="$(basename "$f")"
+    install -D -m 0644 "$f" "$stage/etc/containers/systemd/$base"
+    PKG_CONFIG_FILES+=("/etc/containers/systemd/$base")
+  done
+  for f in "$pkg_dir"/dashboards/*.json; do
+    [[ -e "$f" ]] || continue
+    base="$(basename "$f")"
+    install -D -m 0644 "$f" "$stage/var/lib/grafana/dashboards/$base"
+    PKG_CONFIG_FILES+=("/var/lib/grafana/dashboards/$base")
+  done
+
   local entry mode rest src dest
   for entry in "${PKG_FILES[@]}"; do
     mode="${entry%%:*}"
@@ -90,13 +110,13 @@ build_package() {
   )
 
   local dep
-  for dep in "${PKG_DEPENDS[@]:-}"; do
-    [[ -n "$dep" ]] && common_args+=(--depends "$dep")
+  for dep in "${PKG_DEPENDS[@]}"; do
+    common_args+=(--depends "$dep")
   done
 
   local cf
-  for cf in "${PKG_CONFIG_FILES[@]:-}"; do
-    [[ -n "$cf" ]] && common_args+=(--config-files "$cf")
+  for cf in "${PKG_CONFIG_FILES[@]}"; do
+    common_args+=(--config-files "$cf")
   done
 
   if [[ -n "$PKG_EXPORTER_SERVICE" ]]; then

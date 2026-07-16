@@ -85,13 +85,12 @@ jobs:
           sudo apt install -y ./dist/metrics-stack_*.deb
 
       - name: Install exporter and dashboard packages
+        # One transaction; only the base has to go first (previous step), so
+        # the exporters' postinst finds monitoring-add-exporter and
+        # auto-registers. The six leaf packages have no ordering constraints
+        # among themselves.
         run: |
-          sudo apt install -y ./dist/metrics-stack-exporter-node_*.deb
-          sudo apt install -y ./dist/metrics-stack-exporter-smartctl_*.deb
-          sudo apt install -y ./dist/metrics-stack-exporter-ipmi_*.deb
-          sudo apt install -y ./dist/metrics-stack-dashboards-node_*.deb
-          sudo apt install -y ./dist/metrics-stack-dashboards-smartctl_*.deb
-          sudo apt install -y ./dist/metrics-stack-dashboards-ipmi_*.deb
+          sudo apt install -y ./dist/metrics-stack-exporter-*.deb ./dist/metrics-stack-dashboards-*.deb
 
       - name: Wait for base services to become healthy
         run: |
@@ -251,7 +250,6 @@ jobs:
           # daemon-reload must leave no trace of the unit. (dnf remove
           # deletes config files outright, so rpm has no equivalent split.)
           sudo apt purge -y metrics-stack-exporter-node
-          sleep 2
           if [ -f /etc/prometheus/targets.d/node.yml ]; then
             echo "node.yml target file was not cleaned up on removal"
             exit 1

@@ -303,7 +303,7 @@ bundled into the base — see [Packages](#packages):
 ```
 node-exporter (host network, :9100) ───────────────┐
 smartctl-exporter (host network, :9633) ───────────┤
-ipmi-exporter (host network, :9290) ────────────────┤
+ipmi-exporter (host network, :9290) ───────────────┤
 other exporters (containers, native, remote) ──────┼──► Prometheus (:9090)
    registered via targets.d/*.yml                  │        │
                                                     │        ├──► Alertmanager (:9093) ──► email

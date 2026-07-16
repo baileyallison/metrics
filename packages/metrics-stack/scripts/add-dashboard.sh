@@ -26,9 +26,14 @@ to point at this stack's Prometheus datasource automatically.
 EOF
 }
 
-if [[ $# -ne 1 ]] || [[ "$1" == "-h" || "$1" == "--help" ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
-  exit "$([[ $# -eq 1 ]] && echo 0 || echo 1)"
+  exit 0
+fi
+
+if [[ $# -ne 1 ]]; then
+  usage >&2
+  exit 1
 fi
 
 if [[ $EUID -ne 0 ]]; then
