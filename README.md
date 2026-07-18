@@ -14,7 +14,7 @@ unit.
 |---|---|---|
 | `metrics-stack` | Metapackage: the full stack | the three component packages below |
 | `metrics-stack-prometheus` | Prometheus + alerting rules + `monitoring-add-exporter` | Podman, `metrics-stack-common` |
-| `metrics-stack-alertmanager` | Alertmanager + `monitoring-configure-email` | Podman, `metrics-stack-common` |
+| `metrics-stack-alertmanager` | Alertmanager + `monitoring-configure-email` + `monitoring-configure-cluster` (HA) | Podman, `metrics-stack-common` |
 | `metrics-stack-grafana` | Grafana + provisioning + `monitoring-add-dashboard` | Podman, `metrics-stack-common` |
 | `metrics-stack-common` | The shared `metrics` Podman network the components join | Podman |
 | `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **no** stack packages |
@@ -256,6 +256,39 @@ Alerting rules already shipped (see
 | `AlertmanagerConfigReloadFailed` | Last Alertmanager config reload failed |
 | `AlertmanagerNotificationsFailing` | Alertmanager notifications are erroring |
 
+## Clustering Alertmanager (HA)
+
+Alertmanager instances gossip over **TCP+UDP 9094** to form an HA cluster:
+notifications are deduplicated and silences replicate across members. Run
+this on **each** cluster node, listing the *other* nodes as peers:
+
+```
+# on nodeA:
+sudo monitoring-configure-cluster --advertise nodeA.example.com nodeB.example.com
+# on nodeB:
+sudo monitoring-configure-cluster --advertise nodeB.example.com nodeA.example.com
+```
+
+This writes the cluster flags to `/etc/alertmanager/cluster.args` (picked up
+by the container's entrypoint wrapper — the packaged Quadlet unit itself is
+never edited, so upgrades stay clean), opens 9094 tcp+udp on the firewall,
+restarts Alertmanager, and prints the cluster status. `--advertise` defaults
+to the host's first address; set it explicitly on multi-homed hosts.
+
+For alerting to be truly HA, **every Prometheus must send alerts to every
+cluster member** (the cluster deduplicates). Prometheus discovers its
+Alertmanagers from drop-in files in `/etc/prometheus/alertmanagers.d/` — the
+same pattern as `targets.d/`: the Alertmanager package registers the local
+instance, `monitoring-configure-cluster` registers the peers, and remote
+instances can be added by hand (see that directory's README.md).
+
+To leave a cluster: `sudo monitoring-configure-cluster --disable` — removes
+the flags and peer registration, closes 9094, and restarts standalone.
+
+**Security note:** the gossip protocol is unauthenticated and unencrypted;
+run it only over a trusted network or VPN/tunnel between nodes. (Upstream
+supports mTLS for cluster traffic, but that's not wired up here.)
+
 ## Adding exporters
 
 Prometheus watches `/etc/prometheus/targets.d/*.yml` (30s refresh, no
@@ -398,13 +431,17 @@ packages/
       prometheus.yml                         # main Prometheus config
       rules.d/                               # alerting rules (host + stack health)
       targets.d/                             # drop-in exporter targets (file_sd)
+      alertmanagers.d/                       # drop-in Alertmanager instances (file_sd)
     scripts/add-exporter.sh                  # -> monitoring-add-exporter
     packaging/                               # manifest + the same three scriptlets
 
   metrics-stack-alertmanager/
     containers/alertmanager.container        # Quadlet unit, pinned image tag
-    alertmanager/alertmanager.yml            # email routing template
+    alertmanager/
+      alertmanager.yml                       # email routing template
+      entrypoint.sh                          # appends cluster flags from cluster.args
     scripts/configure-email.sh               # -> monitoring-configure-email
+    scripts/configure-cluster.sh             # -> monitoring-configure-cluster
     packaging/                               # manifest + the same three scriptlets
 
   metrics-stack-grafana/
@@ -478,6 +515,16 @@ package's `.container`/`.network` files.
 
 ## Notes
 
+- Alertmanager's cluster gossip port (9094 tcp+udp) is always *published* on
+  the host (a Quadlet unit can't publish conditionally), but the firewall
+  only opens it when `monitoring-configure-cluster` enables clustering — on
+  non-clustered hosts with an active firewall it stays unreachable.
+- Upgrading a host that had a locally-edited pre-2.8 `prometheus.yml`? Your
+  edited file is kept (`noreplace`/conffile semantics), which still works —
+  but it has the old static `alerting:` block, so Alertmanager clustering's
+  fan-out needs you to merge in the `alertmanagers.d` file_sd change (see
+  the shipped `.rpmnew` file, or this repo's
+  `packages/metrics-stack-prometheus/prometheus/prometheus.yml`).
 - Prometheus retains data for 15 days by default. Tune
   `--storage.tsdb.retention.time` in `prometheus.container`'s `Exec=` line
   if you need longer retention.

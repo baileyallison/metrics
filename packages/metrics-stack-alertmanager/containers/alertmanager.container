@@ -18,6 +18,19 @@ ContainerName=alertmanager
 Network=metrics.network
 PublishPort=9093:9093
 
+# HA cluster gossip port (TCP+UDP -- memberlist uses both). Published
+# unconditionally because Quadlet can't make it conditional without editing
+# this conffile; the firewall port is only opened by
+# monitoring-configure-cluster, so on non-clustered hosts 9094 stays closed
+# wherever a firewall is active.
+PublishPort=9094:9094
+PublishPort=9094:9094/udp
+
+# The wrapper appends cluster flags from /etc/alertmanager/cluster.args
+# (written by monitoring-configure-cluster; absent on non-clustered hosts).
+# The Exec= flags below reach alertmanager through the wrapper's "$@".
+PodmanArgs=--entrypoint /etc/alertmanager/entrypoint.sh
+
 # :U chowns this directory to the container's internal UID (the official
 # image runs as non-root 'nobody', uid 65534) so alertmanager.yml can stay
 # root:root mode 0640 on the host -- unreadable to other local users -- while

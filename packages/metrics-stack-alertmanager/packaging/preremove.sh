@@ -21,6 +21,20 @@ esac
 systemctl stop alertmanager 2>/dev/null || true
 
 # If it was auto-registered into the local metrics-stack-prometheus's
-# targets.d, clean that up too so Prometheus doesn't keep alerting on a
-# target that no longer exists.
+# targets.d/alertmanagers.d, clean that up too so Prometheus doesn't keep
+# alerting on a target (or notifying an instance) that no longer exists.
 rm -f /etc/prometheus/targets.d/alertmanager.yml
+rm -f /etc/prometheus/alertmanagers.d/local.yml /etc/prometheus/alertmanagers.d/peers.yml
+
+# Clustering leftovers: cluster.args isn't in the package manifest (it's
+# written by monitoring-configure-cluster), and the gossip port may have
+# been opened by that script -- close it; removing a rule that was never
+# added is harmless under the || true guards.
+rm -f /etc/alertmanager/cluster.args
+if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+  firewall-cmd --permanent --remove-port=9094/tcp --remove-port=9094/udp || true
+  firewall-cmd --reload || true
+elif command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+  ufw delete allow 9094/tcp || true
+  ufw delete allow 9094/udp || true
+fi

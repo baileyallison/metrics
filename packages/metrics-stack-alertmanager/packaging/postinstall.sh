@@ -38,6 +38,17 @@ systemctl restart alertmanager
 if command -v monitoring-add-exporter >/dev/null 2>&1; then
   log "metrics-stack-prometheus detected locally -- registering alertmanager target"
   monitoring-add-exporter alertmanager alertmanager:9093
+
+  # Also register as a notification destination: Prometheus's alerting
+  # config discovers Alertmanager instances from alertmanagers.d/ (file_sd),
+  # the same drop-in pattern as targets.d/ for scraping.
+  log "registering alertmanager for Prometheus alert delivery (alertmanagers.d)"
+  mkdir -p /etc/prometheus/alertmanagers.d
+  {
+    echo "# managed by metrics-stack-alertmanager: postinstall"
+    echo "- targets:"
+    echo "    - alertmanager:9093"
+  } > /etc/prometheus/alertmanagers.d/local.yml
 else
   log "metrics-stack-prometheus not found on this host."
   log "Prometheus's alerting config expects Alertmanager on the same host's 'metrics'"

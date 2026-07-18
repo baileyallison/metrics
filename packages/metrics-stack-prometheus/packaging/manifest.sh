@@ -12,6 +12,7 @@ PKG_FILES=(
   "0644:prometheus/rules.d/host-alerts.yml:/etc/prometheus/rules.d/host-alerts.yml"
   "0644:prometheus/rules.d/stack-alerts.yml:/etc/prometheus/rules.d/stack-alerts.yml"
   "0644:prometheus/targets.d/README.md:/etc/prometheus/targets.d/README.md"
+  "0644:prometheus/alertmanagers.d/README.md:/etc/prometheus/alertmanagers.d/README.md"
   "0755:scripts/add-exporter.sh:/usr/bin/monitoring-add-exporter"
 )
 

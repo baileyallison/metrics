@@ -10,15 +10,17 @@ rule_files:
   - /etc/prometheus/rules.d/*.yml
 
 alerting:
+  # Alertmanager instances are drop-in files, mirroring the targets.d
+  # pattern below: the metrics-stack-alertmanager package registers the
+  # local instance (local.yml), and monitoring-configure-cluster registers
+  # HA cluster peers (peers.yml) so alerts fan out to every cluster member.
+  # See alertmanagers.d/README.md. An empty directory is harmless -- alerts
+  # just have nowhere to go until an Alertmanager registers.
   alertmanagers:
-    - static_configs:
-        # 'alertmanager' resolves via the shared 'metrics' Podman network
-        # (see packages/metrics-stack-common/containers/metrics.network)
-        # once metrics-stack-alertmanager is installed on this host; with no
-        # Alertmanager around this is harmless -- alerts just have nowhere
-        # to go.
-        - targets:
-            - alertmanager:9093
+    - file_sd_configs:
+        - files:
+            - /etc/prometheus/alertmanagers.d/*.yml
+          refresh_interval: 30s
 
 scrape_configs:
   - job_name: prometheus

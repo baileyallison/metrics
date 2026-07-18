@@ -9,7 +9,12 @@ PKG_DEPENDS=(podman metrics-stack-common)
 # "mode:src(relative to this package dir):dest(absolute path on target)"
 PKG_FILES=(
   "0640:alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml"
+  # Deliberately NOT a config file: the entrypoint wrapper is code (it feeds
+  # monitoring-configure-cluster's flags to alertmanager), so upgrades must
+  # replace it, not preserve local edits.
+  "0755:alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh"
   "0755:scripts/configure-email.sh:/usr/bin/monitoring-configure-email"
+  "0755:scripts/configure-cluster.sh:/usr/bin/monitoring-configure-cluster"
 )
 
 # Convention-staged files (containers/) are marked config automatically.
