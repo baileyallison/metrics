@@ -20,9 +20,9 @@ esac
 
 systemctl stop @SERVICE@ 2>/dev/null || true
 
-# If it was auto-registered into the local metrics-stack base's targets.d,
-# clean that up too so Prometheus doesn't keep alerting on a target that no
-# longer exists.
+# If it was auto-registered into the local metrics-stack-prometheus's
+# targets.d, clean that up too so Prometheus doesn't keep alerting on a
+# target that no longer exists.
 rm -f /etc/prometheus/targets.d/@JOB@.yml
 
 # Close the port the postinstall opened.

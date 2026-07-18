@@ -1,9 +1,10 @@
 # metrics
 
-A metrics and monitoring stack for Rocky Linux 9+ and Ubuntu 24.04+: Prometheus,
-Alertmanager (email alerts), and Grafana as a base package, plus separate
-exporter and dashboard packages you add only where you need them. Every
-component runs as a Podman container managed by a systemd
+A metrics and monitoring stack for Rocky Linux 9+ and Ubuntu 24.04+:
+Prometheus, Alertmanager (email alerts), and Grafana as separate component
+packages (with a `metrics-stack` metapackage that installs all three), plus
+separate exporter and dashboard packages you add only where you need them.
+Every component runs as a Podman container managed by a systemd
 [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
 unit.
 
@@ -11,36 +12,71 @@ unit.
 
 | Package | What it is | Depends on |
 |---|---|---|
-| `metrics-stack` | Prometheus + Alertmanager + Grafana (the base) | Podman |
-| `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **not** the base |
-| `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **not** the base |
-| `metrics-stack-exporter-ipmi` | ipmi_exporter (local host BMC: temp/power/fan/voltage) | Podman only — **not** the base |
+| `metrics-stack` | Metapackage: the full stack | the three component packages below |
+| `metrics-stack-prometheus` | Prometheus + alerting rules + `monitoring-add-exporter` | Podman, `metrics-stack-common` |
+| `metrics-stack-alertmanager` | Alertmanager + `monitoring-configure-email` | Podman, `metrics-stack-common` |
+| `metrics-stack-grafana` | Grafana + provisioning + `monitoring-add-dashboard` | Podman, `metrics-stack-common` |
+| `metrics-stack-common` | The shared `metrics` Podman network the components join | Podman |
+| `metrics-stack-exporter-node` | node_exporter (host CPU/mem/disk/network) | Podman only — **no** stack packages |
+| `metrics-stack-exporter-smartctl` | smartctl_exporter (disk S.M.A.R.T. health) | Podman only — **no** stack packages |
+| `metrics-stack-exporter-ipmi` | ipmi_exporter (local host BMC: temp/power/fan/voltage) | Podman only — **no** stack packages |
 | `metrics-stack-dashboards-node` | Starter node_exporter Grafana dashboards: overview + CPU/memory/network/disk detail | nothing (pure data) |
 | `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-ipmi` | Starter "IPMI Overview" Grafana dashboard | nothing (pure data) |
 
+Each component package installs and runs standalone, so partial deployments
+work: Prometheus without Grafana, an alerting-free stack, or Grafana on a
+different host than Prometheus (edit the provisioned datasource — see
+[Adding Grafana dashboards](#adding-grafana-dashboards)). Alertmanager
+follows the same auto-registration pattern as the exporters: installed
+alongside `metrics-stack-prometheus`, its postinstall registers itself as a
+scrape target; removed, it deregisters.
+
 Exporter packages are standalone by design: install `metrics-stack-exporter-node`
 on any host you want metrics from — a database server, a NAS, a laptop — with
-or without `metrics-stack` itself present on that same host. If the base
-happens to be installed locally, the exporter's postinstall auto-registers
-itself with Prometheus; otherwise it prints the one-liner to run on your
-Prometheus server instead. Dashboard packages are the same pattern used by
-things like `ceph-grafana-dashboards`: inert files that are useful *with* a
-Grafana around, but don't require one to install.
+or without the stack itself present on that same host. If
+`metrics-stack-prometheus` happens to be installed locally, the exporter's
+postinstall auto-registers itself with Prometheus; otherwise it prints the
+one-liner to run on your Prometheus server instead. Dashboard packages are
+the same pattern used by things like `ceph-grafana-dashboards`: inert files
+that are useful *with* a Grafana around, but don't require one to install.
+
+**Upgrading from a pre-3.0 install:** the old monolithic `metrics-stack`
+package was split in v3.0.0 with no in-place migration path. Uninstall the
+old package first (`apt purge metrics-stack` / `dnf remove metrics-stack`),
+then install the new packages — data under
+`/var/lib/{prometheus,alertmanager,grafana}` is untouched by removal, so
+history and dashboards survive the reinstall.
 
 ## Quick start
 
 Every package is install-only-via-`.rpm`/`.deb` — no git-clone-and-run-a-script
-path for any of them, base included. Every tagged release is built and
+path for any of them. Every tagged release is built and
 smoke-tested end-to-end in CI (see [Releasing](#releasing)), producing
 `.rpm`s and `.deb`s attached to the [GitHub Release](../../releases):
 
 ```
-# on your monitoring server (Rocky/RHEL/Alma)
-sudo dnf install ./metrics-stack-<version>-1.noarch.rpm
+# on your monitoring server (Rocky/RHEL/Alma) -- one transaction, so the
+# package manager can resolve the metapackage's dependencies from the
+# local files:
+sudo dnf install ./metrics-stack-<version>-1.noarch.rpm \
+  ./metrics-stack-common-<version>-1.noarch.rpm \
+  ./metrics-stack-prometheus-<version>-1.noarch.rpm \
+  ./metrics-stack-alertmanager-<version>-1.noarch.rpm \
+  ./metrics-stack-grafana-<version>-1.noarch.rpm
 
 # on your monitoring server (Ubuntu/Debian)
-sudo apt install ./metrics-stack_<version>-1_all.deb
+sudo apt install ./metrics-stack_<version>-1_all.deb \
+  ./metrics-stack-common_<version>-1_all.deb \
+  ./metrics-stack-prometheus_<version>-1_all.deb \
+  ./metrics-stack-alertmanager_<version>-1_all.deb \
+  ./metrics-stack-grafana_<version>-1_all.deb
+
+# or skip the metapackage and install only the components a host needs,
+# e.g. Prometheus + Alertmanager with no Grafana:
+sudo apt install ./metrics-stack-common_<version>-1_all.deb \
+  ./metrics-stack-prometheus_<version>-1_all.deb \
+  ./metrics-stack-alertmanager_<version>-1_all.deb
 
 # on that same box, or any other host you want metrics from:
 sudo apt install ./metrics-stack-exporter-node_<version>-1_all.deb
@@ -70,16 +106,16 @@ conffile, the service stays defined and would start again on reboot. Use
 To try out unreleased changes without waiting for a tagged release, build
 packages locally instead — see [Releasing](#releasing).
 
-Once the base is installed:
+Once the stack is installed:
 
 - Grafana: `http://<host>:3000` (default login `admin`/`admin`, change on first login)
 - Prometheus: `http://<host>:9090`
 - Alertmanager: `http://<host>:9093`
 
-Only Grafana's port (3000) is opened on the firewall by default for the base
-package; each exporter package opens its own port (e.g. 9100 for
-node_exporter). Prometheus/Alertmanager stay off the firewall on the
-assumption you'll browse them through Grafana or over SSH tunnel/VPN.
+Only Grafana's port (3000) is opened on the firewall by default (by
+`metrics-stack-grafana`); each exporter package opens its own port (e.g.
+9100 for node_exporter). Prometheus/Alertmanager stay off the firewall on
+the assumption you'll browse them through Grafana or over SSH tunnel/VPN.
 
 ## Why containers instead of native packages
 
@@ -120,13 +156,14 @@ smartctl_exporter):** edit the `Image=` line in the relevant package's
 `.container` file, e.g.:
 
 ```
-# packages/metrics-stack/containers/prometheus.container
+# packages/metrics-stack-prometheus/containers/prometheus.container
 Image=docker.io/prom/prometheus:v3.9.0   ->   Image=docker.io/prom/prometheus:v3.10.0
 ```
 
 An `Image=` bump means cutting a new release (see [Releasing](#releasing))
-and running `dnf upgrade metrics-stack` / `apt upgrade metrics-stack` (or
-the relevant exporter package name) once it's out.
+and running `dnf upgrade metrics-stack-prometheus` / `apt upgrade
+metrics-stack-prometheus` (or the relevant component/exporter package name)
+once it's out.
 
 Check each image's tag list before bumping:
 [prom/prometheus](https://hub.docker.com/r/prom/prometheus/tags),
@@ -153,15 +190,17 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
    - **smoke-test-ubuntu** — on a live Ubuntu 24.04 GitHub-hosted runner (a
      real systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt
      dependency resolution all behave as they would on a real box), installs
-     the *actual built* `.deb`s (all seven packages), confirms
-     Prometheus/Alertmanager/Grafana/both exporters are healthy, confirms
-     node_exporter/smartctl_exporter/ipmi_exporter **auto-registered**
-     themselves as Prometheus targets with no manual step, confirms alerting
-     rules loaded and the starter dashboards were provisioned, reinstalls
-     the base and an exporter to prove the upgrade path leaves services
-     running and targets registered, then purges an exporter and confirms
-     its target file, firewall rule, and generated systemd unit were
-     cleaned up.
+     the *actual built* `.deb`s (all eleven packages), confirms
+     Prometheus/Alertmanager/Grafana/the exporters are healthy, confirms
+     Alertmanager and node_exporter/smartctl_exporter/ipmi_exporter
+     **auto-registered** themselves as Prometheus targets with no manual
+     step, confirms alerting rules loaded and the starter dashboards were
+     provisioned, reinstalls the stack components and an exporter to prove
+     the upgrade path leaves services running and targets registered,
+     purges an exporter and confirms its target file, firewall rule, and
+     generated systemd unit were cleaned up, then removes Alertmanager and
+     confirms Prometheus and Grafana keep running without it (the point of
+     the package split).
    - **smoke-test-rocky** — installs the *actual built* `.rpm`s inside a
      plain `rockylinux:9` container. Deliberately narrower scope than the
      Ubuntu lane: a container has no systemd as PID 1, so the `%post`
@@ -169,7 +208,7 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
      (identically for a correct or broken package, so not a useful signal).
      Installs with `--setopt=tsflags=noscripts` instead, validating what a
      container *can* meaningfully check — real `dnf`/`Requires: podman`
-     dependency resolution against EL9's AppStream repo, that all seven
+     dependency resolution against EL9's AppStream repo, that all eleven
      packages install together without file conflicts, correct file
      placement/permissions, and that `%config(noreplace)` markers landed
      correctly. It does not cover service startup or SELinux labeling
@@ -203,7 +242,8 @@ pinned Alertmanager image, and restarts the `alertmanager` service. Run
 `monitoring-configure-email --help` for all options (`--no-tls`, password
 prompt, etc).
 
-Alerting rules already shipped (see `packages/metrics-stack/prometheus/rules.d/`):
+Alerting rules already shipped (see
+`packages/metrics-stack-prometheus/prometheus/rules.d/`):
 
 | Alert | Fires when |
 |---|---|
@@ -226,10 +266,10 @@ sudo monitoring-add-exporter mysql db1.example.com:9104 db2.example.com:9104
 ```
 
 Remove a job by deleting `/etc/prometheus/targets.d/<job>.yml`. See
-`packages/metrics-stack/prometheus/targets.d/README.md` for the file format
-if you'd rather write it by hand.
+`packages/metrics-stack-prometheus/prometheus/targets.d/README.md` for the
+file format if you'd rather write it by hand.
 
-**This stack's own exporters are separate packages, not part of the base:**
+**This stack's own exporters are separate packages too:**
 
 - `metrics-stack-exporter-node` — node_exporter, `Network=host` (needs the
   real host's network/proc/sys view, not a container's).
@@ -247,12 +287,14 @@ if you'd rather write it by hand.
   host:port model.
 
 All three run with `Network=host` specifically so they install and work
-standalone, without requiring the base's `metrics` Podman network. When
-installed on the same host as the base, their postinstall scripts
-auto-register with Prometheus via `host.containers.internal:<port>` (how a
-bridge-networked container reaches the host); installed on a different host,
-they print the `monitoring-add-exporter` command to run on your Prometheus
-server instead.
+standalone, without requiring the stack's shared `metrics` Podman network
+(owned by `metrics-stack-common`). When installed on the same host as
+`metrics-stack-prometheus`, their postinstall scripts auto-register with
+Prometheus via `host.containers.internal:<port>` (how a bridge-networked
+container reaches the host); installed on a different host, they print the
+`monitoring-add-exporter` command to run on your Prometheus server instead.
+(`metrics-stack-alertmanager` registers itself the same way — as
+`alertmanager:9093` over the shared network rather than a host port.)
 
 For other exporters (MySQL, PostgreSQL, etc.), run them however you like —
 their own container, a container elsewhere on the network, or a native
@@ -281,8 +323,14 @@ seconds — no restart needed. `${DS_*}` datasource placeholders in downloaded
 dashboards are rewritten automatically to use this stack's Prometheus
 datasource.
 
+The provisioned datasource points at `http://prometheus:9090` over the
+shared `metrics` network. Running Grafana on a different host than
+Prometheus? Edit `/etc/grafana/provisioning/datasources/prometheus.yml`
+(it's a conffile — local edits survive upgrades) to point at your
+Prometheus server's address.
+
 Three starter dashboards ship as their own packages rather than being
-bundled into the base — see [Packages](#packages):
+bundled into `metrics-stack-grafana` — see [Packages](#packages):
 
 - `metrics-stack-dashboards-node` — five dashboards, all templated over
   `$instance` and cross-linked via the top nav bar so you can drill down
@@ -322,40 +370,50 @@ other exporters (containers, native, remote) ──────┼──► Prom
                                                     │        │
                                                     │        └──◄ Grafana (:3000) queries for graphs
                                                     │
-     'metrics' Podman network (base package only) joins Prometheus,
+     'metrics' Podman network (from metrics-stack-common) joins Prometheus,
      Alertmanager, and Grafana by container name; exporter packages stay on
      the host network -- both so they see real host interfaces/proc/sys/
-     devices, and so they install standalone without depending on the base.
+     devices, and so they install standalone without the stack packages.
 ```
 
 ## Repository layout
 
 ```
 packages/
-  metrics-stack/                             # base package
-    containers/
-      metrics.network                        # shared Podman network (Quadlet)
-      prometheus.container                   # Quadlet unit, pinned image tag
-      alertmanager.container                 # Quadlet unit, pinned image tag
-      grafana.container                      # Quadlet unit, pinned image tag
+  metrics-stack/                             # metapackage: depends on the three components
+    doc/README                               # -> /usr/share/doc/metrics-stack/README
+    packaging/manifest.sh                    # read by packaging/build.sh
+
+  metrics-stack-common/
+    containers/metrics.network               # shared Podman network (Quadlet)
+    packaging/
+      manifest.sh
+      postinstall.sh                         # %post / postinst
+      preremove.sh                           # %preun / prerm (uninstall only, not upgrade)
+      postremove.sh                          # %postun / postrm (daemon-reload)
+
+  metrics-stack-prometheus/
+    containers/prometheus.container          # Quadlet unit, pinned image tag
     prometheus/
       prometheus.yml                         # main Prometheus config
       rules.d/                               # alerting rules (host + stack health)
       targets.d/                             # drop-in exporter targets (file_sd)
-    alertmanager/
-      alertmanager.yml                       # email routing template
+    scripts/add-exporter.sh                  # -> monitoring-add-exporter
+    packaging/                               # manifest + the same three scriptlets
+
+  metrics-stack-alertmanager/
+    containers/alertmanager.container        # Quadlet unit, pinned image tag
+    alertmanager/alertmanager.yml            # email routing template
+    scripts/configure-email.sh               # -> monitoring-configure-email
+    packaging/                               # manifest + the same three scriptlets
+
+  metrics-stack-grafana/
+    containers/grafana.container             # Quadlet unit, pinned image tag
     grafana/
       provisioning/datasources/prometheus.yml
-      provisioning/dashboards/local.yml       # file-based dashboard provider
-    scripts/
-      add-exporter.sh       -> monitoring-add-exporter
-      configure-email.sh    -> monitoring-configure-email
-      add-dashboard.sh      -> monitoring-add-dashboard
-    packaging/
-      manifest.sh                            # read by packaging/build.sh
-      postinstall.sh                         # %post / postinst
-      preremove.sh                           # %preun / prerm (uninstall only, not upgrade)
-      postremove.sh                          # %postun / postrm (daemon-reload)
+      provisioning/dashboards/local.yml      # file-based dashboard provider
+    scripts/add-dashboard.sh                 # -> monitoring-add-dashboard
+    packaging/                               # manifest + the same three scriptlets
 
   metrics-stack-exporter-node/
     containers/node-exporter.container
@@ -401,18 +459,20 @@ packaging/
 | Path | Contents | Owned by |
 |---|---|---|
 | `/etc/containers/systemd/` | Quadlet unit files (`.network`, `.container`) | all packages |
-| `/etc/prometheus/` | `prometheus.yml`, `rules.d/`, `targets.d/` (bind-mounted read-only) | `metrics-stack` |
-| `/etc/alertmanager/alertmanager.yml` | SMTP config, mode `0640` (bind-mounted read-only) | `metrics-stack` |
-| `/etc/grafana/provisioning/` | datasource + dashboard-provider YAML (bind-mounted read-only) | `metrics-stack` |
-| `/var/lib/prometheus/` | Prometheus TSDB data | `metrics-stack` |
-| `/var/lib/alertmanager/` | Alertmanager state | `metrics-stack` |
-| `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` | `metrics-stack` (dir), dashboard packages (files) |
+| `/etc/prometheus/` | `prometheus.yml`, `rules.d/`, `targets.d/` (bind-mounted read-only) | `metrics-stack-prometheus` |
+| `/etc/alertmanager/alertmanager.yml` | SMTP config, mode `0640` (bind-mounted read-only) | `metrics-stack-alertmanager` |
+| `/etc/grafana/provisioning/` | datasource + dashboard-provider YAML (bind-mounted read-only) | `metrics-stack-grafana` |
+| `/var/lib/prometheus/` | Prometheus TSDB data | `metrics-stack-prometheus` |
+| `/var/lib/alertmanager/` | Alertmanager state | `metrics-stack-alertmanager` |
+| `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` | `metrics-stack-grafana` (dir), dashboard packages (files) |
 
 ## Service names (same on both distros)
 
-`metrics-network`, `prometheus`, `alertmanager`, `grafana` (from
-`metrics-stack`); `node-exporter` (from `metrics-stack-exporter-node`);
-`smartctl-exporter` (from `metrics-stack-exporter-smartctl`); `ipmi-exporter`
+`metrics-network` (from `metrics-stack-common`); `prometheus` (from
+`metrics-stack-prometheus`); `alertmanager` (from
+`metrics-stack-alertmanager`); `grafana` (from `metrics-stack-grafana`);
+`node-exporter` (from `metrics-stack-exporter-node`); `smartctl-exporter`
+(from `metrics-stack-exporter-smartctl`); `ipmi-exporter`
 (from `metrics-stack-exporter-ipmi`) — all generated by Quadlet from each
 package's `.container`/`.network` files.
 

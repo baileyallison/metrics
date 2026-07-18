@@ -17,15 +17,15 @@ systemctl daemon-reload
 log "restarting @SERVICE@"
 systemctl restart @SERVICE@
 
-# If the metrics-stack base package is installed on this same host, register
+# If metrics-stack-prometheus is installed on this same host, register
 # ourselves automatically. host.containers.internal is how a container on
-# the base's 'metrics' bridge network (i.e. Prometheus) reaches this host,
+# the stack's 'metrics' bridge network (i.e. Prometheus) reaches this host,
 # since this exporter itself uses Network=host, not that bridge network.
 if command -v monitoring-add-exporter >/dev/null 2>&1; then
-  log "metrics-stack base detected locally -- registering @SERVICE@ target"
+  log "metrics-stack-prometheus detected locally -- registering @SERVICE@ target"
   monitoring-add-exporter @JOB@ host.containers.internal:@PORT@
 else
-  log "metrics-stack base not found on this host."
+  log "metrics-stack-prometheus not found on this host."
   log "On your Prometheus server, run:"
   log "  monitoring-add-exporter @JOB@ <this-host's-reachable-address>:@PORT@"
 fi

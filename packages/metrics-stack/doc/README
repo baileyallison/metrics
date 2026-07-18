@@ -1,0 +1,13 @@
+metrics-stack is a metapackage: it installs the full monitoring stack by
+depending on the three component packages.
+
+  metrics-stack-prometheus     Prometheus + alerting rules + monitoring-add-exporter
+  metrics-stack-alertmanager   Alertmanager + monitoring-configure-email
+  metrics-stack-grafana        Grafana + monitoring-add-dashboard
+  metrics-stack-common         shared 'metrics' Podman network (pulled in by all three)
+
+Each component package installs and runs standalone -- install just what a
+host needs. Removing this metapackage does not remove the components;
+remove (or purge, on Debian) the component packages themselves.
+
+Project: https://github.com/baileyallison/metrics

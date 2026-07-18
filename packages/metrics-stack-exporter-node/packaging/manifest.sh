@@ -5,7 +5,7 @@
 # exporter-*.sh, rendered with the PKG_EXPORTER_* values below. All standalone
 # exporter packages differ only in these values.
 PKG_NAME="metrics-stack-exporter-node"
-PKG_DESCRIPTION="node_exporter for metrics-stack. Standalone -- installs and runs with or without the metrics-stack base package present."
+PKG_DESCRIPTION="node_exporter for metrics-stack. Standalone -- installs and runs with or without the metrics-stack packages present."
 PKG_DEPENDS=(podman)
 
 PKG_EXPORTER_SERVICE="node-exporter"

@@ -2,7 +2,7 @@
 # Packaging manifest for metrics-stack-dashboards-node, read by packaging/build.sh.
 # Pure data -- dashboards/ is staged to /var/lib/grafana/dashboards/ (and
 # marked config) by convention; no service, no scriptlets: Grafana's file
-# provisioning provider (shipped by the metrics-stack base package) already
+# provisioning provider (shipped by metrics-stack-grafana) already
 # polls its dashboards directory every 30s.
 #
 # Deliberately no PKG_DEPENDS: this mirrors packages like ceph-grafana-

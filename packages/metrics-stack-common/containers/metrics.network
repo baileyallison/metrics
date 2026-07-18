@@ -1,0 +1,9 @@
+# managed by metrics-stack-common
+# Shared Podman network so Prometheus, Alertmanager, and Grafana can reach
+# each other by container name. node-exporter deliberately does NOT join
+# this network -- it uses Network=host to see the real host's network/proc/sys.
+[Unit]
+Description=metrics-stack shared network
+
+[Network]
+NetworkName=metrics

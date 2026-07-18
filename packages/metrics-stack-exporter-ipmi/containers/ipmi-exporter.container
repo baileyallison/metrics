@@ -17,7 +17,7 @@
 # /dev/ipmi0 -- there's no meaningful rootless mode for local IPMI access,
 # same reasoning as smartctl-exporter. Network=host for the same
 # standalone-install reasoning as node/smartctl exporters: this package
-# doesn't depend on the metrics-stack base.
+# doesn't depend on the other metrics-stack packages.
 [Unit]
 Description=IPMI Exporter
 After=network-online.target

@@ -1,41 +1,15 @@
 # shellcheck shell=bash disable=SC2034  # sourced by packaging/build.sh, which uses these vars
 # Packaging manifest for metrics-stack, read by packaging/build.sh.
+#
+# Metapackage: ships no services of its own, just depends on the three
+# component packages so "install metrics-stack" still means "install the
+# whole monitoring stack". Install a component package directly instead if
+# you want only part of the stack (e.g. Grafana on a separate host).
 PKG_NAME="metrics-stack"
-PKG_DESCRIPTION="Prometheus/Alertmanager/Grafana monitoring stack base (Podman Quadlet containers). Add exporters via the separate metrics-stack-exporter-* packages."
-PKG_DEPENDS=(podman)
+PKG_DESCRIPTION="Prometheus/Alertmanager/Grafana monitoring stack (metapackage). Pulls in metrics-stack-prometheus, metrics-stack-alertmanager, and metrics-stack-grafana; add exporters via the separate metrics-stack-exporter-* packages."
+PKG_DEPENDS=(metrics-stack-prometheus metrics-stack-alertmanager metrics-stack-grafana)
 
-# containers/ is staged to /etc/containers/systemd/ by convention (see
-# packaging/build.sh) -- only files outside that convention are listed here.
-# "mode:src(relative to this package dir):dest(absolute path on target)"
+# fpm needs at least one input path, so ship the doc README.
 PKG_FILES=(
-  "0644:prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
-  "0644:prometheus/rules.d/host-alerts.yml:/etc/prometheus/rules.d/host-alerts.yml"
-  "0644:prometheus/rules.d/stack-alerts.yml:/etc/prometheus/rules.d/stack-alerts.yml"
-  "0644:prometheus/targets.d/README.md:/etc/prometheus/targets.d/README.md"
-  "0640:alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml"
-  "0644:grafana/provisioning/datasources/prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml"
-  "0644:grafana/provisioning/dashboards/local.yml:/etc/grafana/provisioning/dashboards/local.yml"
-  "0755:scripts/add-exporter.sh:/usr/bin/monitoring-add-exporter"
-  "0755:scripts/configure-email.sh:/usr/bin/monitoring-configure-email"
-  "0755:scripts/add-dashboard.sh:/usr/bin/monitoring-add-dashboard"
+  "0644:doc/README:/usr/share/doc/metrics-stack/README"
 )
-
-# Convention-staged files (containers/) are marked config automatically.
-PKG_CONFIG_FILES=(
-  /etc/prometheus/prometheus.yml
-  /etc/prometheus/rules.d/host-alerts.yml
-  /etc/prometheus/rules.d/stack-alerts.yml
-  /etc/alertmanager/alertmanager.yml
-  /etc/grafana/provisioning/datasources/prometheus.yml
-  /etc/grafana/provisioning/dashboards/local.yml
-)
-
-PKG_DIRECTORIES=(
-  /var/lib/prometheus
-  /var/lib/alertmanager
-  /var/lib/grafana/dashboards
-)
-
-PKG_POSTINSTALL="packaging/postinstall.sh"
-PKG_PREREMOVE="packaging/preremove.sh"
-PKG_POSTREMOVE="packaging/postremove.sh"

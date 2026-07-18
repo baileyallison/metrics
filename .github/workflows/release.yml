@@ -79,20 +79,31 @@ jobs:
           name: packages
           path: dist
 
-      - name: Install base package
+      - name: Install stack component packages
+        # One transaction: apt can't resolve dependencies from local ./*.deb
+        # files it wasn't handed, so the metapackage and its components (and
+        # metrics-stack-common) all go in together. dpkg unpacks everything
+        # before configuring, so alertmanager's postinst finds
+        # monitoring-add-exporter (from metrics-stack-prometheus) and
+        # auto-registers regardless of configure order.
         run: |
           sudo apt-get update
-          sudo apt install -y ./dist/metrics-stack_*.deb
+          sudo apt install -y \
+            ./dist/metrics-stack_*.deb \
+            ./dist/metrics-stack-common_*.deb \
+            ./dist/metrics-stack-prometheus_*.deb \
+            ./dist/metrics-stack-alertmanager_*.deb \
+            ./dist/metrics-stack-grafana_*.deb
 
       - name: Install exporter and dashboard packages
-        # One transaction; only the base has to go first (previous step), so
-        # the exporters' postinst finds monitoring-add-exporter and
-        # auto-registers. The six leaf packages have no ordering constraints
-        # among themselves.
+        # One transaction; only the stack components have to go first
+        # (previous step), so the exporters' postinst finds
+        # monitoring-add-exporter and auto-registers. The six leaf packages
+        # have no ordering constraints among themselves.
         run: |
           sudo apt install -y ./dist/metrics-stack-exporter-*.deb ./dist/metrics-stack-dashboards-*.deb
 
-      - name: Wait for base services to become healthy
+      - name: Wait for stack services to become healthy
         run: |
           ok=0
           for i in $(seq 1 60); do
@@ -161,6 +172,7 @@ jobs:
           # set by monitoring-add-exporter's 'labels: {job: ...}' shows up
           # in the resolved labels, not scrapePool.
           jobs = {t['labels'].get('job') for t in active}
+          assert 'alertmanager' in jobs, 'alertmanager did not auto-register into targets.d'
           assert 'node' in jobs, 'node-exporter did not auto-register into targets.d'
           assert 'smartctl' in jobs, 'smartctl-exporter did not auto-register into targets.d'
           assert 'ipmi' in jobs, 'ipmi-exporter did not auto-register into targets.d'
@@ -228,10 +240,14 @@ jobs:
           # apt install --reinstall drives the same maintainer-script sequence
           # as an upgrade (prerm "upgrade" -> unpack -> postinst "configure"),
           # so this regression-tests the preremove scripts' upgrade guard:
-          # services must still be running and the exporter's target still
-          # registered afterward, not stopped/deregistered by the old
-          # package's prerm.
-          sudo apt install -y --reinstall ./dist/metrics-stack_*.deb
+          # services must still be running and the alertmanager/exporter
+          # targets still registered afterward, not stopped/deregistered by
+          # the old package's prerm.
+          sudo apt install -y --reinstall \
+            ./dist/metrics-stack-common_*.deb \
+            ./dist/metrics-stack-prometheus_*.deb \
+            ./dist/metrics-stack-alertmanager_*.deb \
+            ./dist/metrics-stack-grafana_*.deb
           sudo apt install -y --reinstall ./dist/metrics-stack-exporter-node_*.deb
           for svc in prometheus alertmanager grafana node-exporter; do
             if ! systemctl is-active --quiet "$svc"; then
@@ -240,10 +256,12 @@ jobs:
               exit 1
             fi
           done
-          if [ ! -f /etc/prometheus/targets.d/node.yml ]; then
-            echo "node.yml target file went missing across a reinstall"
-            exit 1
-          fi
+          for target in node alertmanager; do
+            if [ ! -f "/etc/prometheus/targets.d/$target.yml" ]; then
+              echo "$target.yml target file went missing across a reinstall"
+              exit 1
+            fi
+          done
 
       - name: Uninstall an exporter and confirm target cleanup
         run: |
@@ -264,6 +282,26 @@ jobs:
             echo "node-exporter.service still known to systemd after removal"
             exit 1
           fi
+
+      - name: Uninstall Alertmanager and confirm the rest of the stack is unaffected
+        run: |
+          # The point of the package split: removing one component leaves the
+          # others running. Purge the metapackage too (it depends on
+          # metrics-stack-alertmanager, so removing the component alone would
+          # take the metapackage with it anyway -- doing it explicitly keeps
+          # apt from prompting about it).
+          sudo apt purge -y metrics-stack metrics-stack-alertmanager
+          if [ -f /etc/prometheus/targets.d/alertmanager.yml ]; then
+            echo "alertmanager.yml target file was not cleaned up on removal"
+            exit 1
+          fi
+          if systemctl cat alertmanager.service >/dev/null 2>&1; then
+            echo "alertmanager.service still known to systemd after removal"
+            exit 1
+          fi
+          curl -fsS --max-time 10 http://localhost:9090/-/healthy >/dev/null
+          curl -fsS --max-time 10 http://localhost:3000/api/health >/dev/null
+          echo "prometheus and grafana still healthy without alertmanager"
 
       - name: Dump logs on failure
         if: failure()
@@ -287,7 +325,7 @@ jobs:
     # Installing with --setopt=tsflags=noscripts skips scriptlet execution
     # entirely and validates what a container-based job *can* meaningfully
     # check: real dnf dependency resolution (Requires: podman against a
-    # real EL9 AppStream repo), that all 7 packages install together
+    # real EL9 AppStream repo), that all 11 packages install together
     # without file conflicts, correct file placement/permissions, and that
     # %config(noreplace) markers landed on the right files. It does not
     # cover service startup, exporter auto-registration, or SELinux
@@ -313,6 +351,10 @@ jobs:
       - name: Confirm every package is recorded as installed
         run: |
           rpm -q metrics-stack \
+            metrics-stack-common \
+            metrics-stack-prometheus \
+            metrics-stack-alertmanager \
+            metrics-stack-grafana \
             metrics-stack-exporter-node \
             metrics-stack-exporter-smartctl \
             metrics-stack-exporter-ipmi \
@@ -335,7 +377,7 @@ jobs:
 
       - name: Confirm %config(noreplace) markers landed
         run: |
-          configfiles="$(rpm -q --configfiles metrics-stack)"
+          configfiles="$(rpm -q --configfiles metrics-stack-prometheus metrics-stack-alertmanager)"
           echo "$configfiles"
           echo "$configfiles" | grep -qF /etc/alertmanager/alertmanager.yml
           echo "$configfiles" | grep -qF /etc/prometheus/prometheus.yml
