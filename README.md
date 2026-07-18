@@ -41,8 +41,8 @@ one-liner to run on your Prometheus server instead. Dashboard packages are
 the same pattern used by things like `ceph-grafana-dashboards`: inert files
 that are useful *with* a Grafana around, but don't require one to install.
 
-**Upgrading from a pre-3.0 install:** the old monolithic `metrics-stack`
-package was split in v3.0.0 with no in-place migration path. Uninstall the
+**Upgrading from a pre-2.7 install:** the old monolithic `metrics-stack`
+package was split in v2.7.0 with no in-place migration path. Uninstall the
 old package first (`apt purge metrics-stack` / `dnf remove metrics-stack`),
 then install the new packages — data under
 `/var/lib/{prometheus,alertmanager,grafana}` is untouched by removal, so
