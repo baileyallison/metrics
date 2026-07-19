@@ -461,9 +461,10 @@ jobs:
           path: dist
 
       - name: Upload release assets
-        # Third-party action pinned by commit SHA (v2.4.0) rather than a
-        # movable tag.
-        uses: softprops/action-gh-release@aec2ec56f94eb8180ceec724245f64ef008b89f5 # v2.4.0
+        # Third-party action pinned by commit SHA (v3.0.2) rather than a
+        # movable tag. v3 targets the Node 24 Actions runtime (v2 targeted
+        # the deprecated Node 20 and warned on every release).
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: dist/*
           fail_on_unmatched_files: true
