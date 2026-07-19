@@ -200,10 +200,10 @@ jobs:
           groups = data['data']['groups']
           total = sum(len(g['rules']) for g in groups)
           print(f'{len(groups)} rule groups, {total} rules loaded')
-          # 5 host + 3 stack + 9 smart + 3 ipmi as of v2.9
-          assert total >= 20, f'expected at least 20 rules, got {total}'
+          # 5 host + 3 stack + 9 smart + 3 ipmi + 4 zfs as of v2.9
+          assert total >= 24, f'expected at least 24 rules, got {total}'
           names = {g['name'] for g in groups}
-          assert {'host-alerts', 'stack-alerts', 'smart-alerts', 'ipmi-alerts'} <= names, names
+          assert {'host-alerts', 'stack-alerts', 'smart-alerts', 'ipmi-alerts', 'zfs-alerts'} <= names, names
           "
 
       - name: Check starter dashboards were provisioned
@@ -226,6 +226,7 @@ jobs:
           assert any('Node Disk' in t for t in titles), 'node-disk dashboard not found'
           assert any('smartctl Overview' in t for t in titles), 'smartctl-overview dashboard not found'
           assert any('IPMI Overview' in t for t in titles), 'ipmi-overview dashboard not found'
+          assert any('ZFS Overview' in t for t in titles), 'zfs-overview dashboard not found'
           "; then
               success=1
               break
@@ -380,7 +381,7 @@ jobs:
     # Installing with --setopt=tsflags=noscripts skips scriptlet execution
     # entirely and validates what a container-based job *can* meaningfully
     # check: real dnf dependency resolution (Requires: podman against a
-    # real EL9 AppStream repo), that all 11 packages install together
+    # real EL9 AppStream repo), that all 12 packages install together
     # without file conflicts, correct file placement/permissions, and that
     # %config(noreplace) markers landed on the right files. It does not
     # cover service startup, exporter auto-registration, or SELinux
@@ -415,7 +416,8 @@ jobs:
             metrics-stack-exporter-ipmi \
             metrics-stack-dashboards-node \
             metrics-stack-dashboards-smartctl \
-            metrics-stack-dashboards-ipmi
+            metrics-stack-dashboards-ipmi \
+            metrics-stack-dashboards-zfs
 
       - name: Confirm key files landed with correct permissions
         run: |

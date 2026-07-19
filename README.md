@@ -23,6 +23,7 @@ unit.
 | `metrics-stack-dashboards-node` | Starter node_exporter Grafana dashboards: overview + CPU/memory/network/disk detail | nothing (pure data) |
 | `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-ipmi` | Starter "IPMI Overview" Grafana dashboard | nothing (pure data) |
+| `metrics-stack-dashboards-zfs` | Starter "ZFS Overview" Grafana dashboard (powered by node_exporter's zfs collector — no dedicated exporter) | nothing (pure data) |
 
 Each component package installs and runs standalone, so partial deployments
 work: Prometheus without Grafana, an alerting-free stack, or Grafana on a
@@ -87,6 +88,7 @@ sudo apt install ./metrics-stack-exporter-ipmi_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-node_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-smartctl_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-ipmi_<version>-1_all.deb
+sudo apt install ./metrics-stack-dashboards-zfs_<version>-1_all.deb
 ```
 
 Podman is pulled in as a dependency automatically; each package's
@@ -190,7 +192,7 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
    - **smoke-test-ubuntu** — on a live Ubuntu 24.04 GitHub-hosted runner (a
      real systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt
      dependency resolution all behave as they would on a real box), installs
-     the *actual built* `.deb`s (all eleven packages), confirms
+     the *actual built* `.deb`s (all twelve packages), confirms
      Prometheus/Alertmanager/Grafana/the exporters are healthy, confirms
      Alertmanager and node_exporter/smartctl_exporter/ipmi_exporter
      **auto-registered** themselves as Prometheus targets with no manual
@@ -208,7 +210,7 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
      (identically for a correct or broken package, so not a useful signal).
      Installs with `--setopt=tsflags=noscripts` instead, validating what a
      container *can* meaningfully check — real `dnf`/`Requires: podman`
-     dependency resolution against EL9's AppStream repo, that all eleven
+     dependency resolution against EL9's AppStream repo, that all twelve
      packages install together without file conflicts, correct file
      placement/permissions, and that `%config(noreplace)` markers landed
      correctly. It does not cover service startup or SELinux labeling
@@ -267,6 +269,10 @@ Alerting rules already shipped (see
 | `IpmiSensorCritical` | A BMC sensor (temp/fan/voltage/power) in critical state |
 | `IpmiSensorWarning` | A BMC sensor in warning state for 15m |
 | `IpmiCollectorDown` | ipmi_exporter can't read the BMC for 30m |
+| `ZfsPoolFaulted` | A pool is faulted/suspended/unavail — data unavailable |
+| `ZfsPoolDegraded` | A pool is running with reduced redundancy |
+| `ZfsPoolOffline` | A pool has been offline/removed for 15m |
+| `ZfsArcMemoryThrottling` | The ZFS ARC is hitting memory pressure |
 
 The disk and BMC rules ship with the base Prometheus package but reference
 metrics from `metrics-stack-exporter-smartctl` / `metrics-stack-exporter-ipmi`
@@ -379,7 +385,7 @@ Prometheus? Edit `/etc/grafana/provisioning/datasources/prometheus.yml`
 (it's a conffile — local edits survive upgrades) to point at your
 Prometheus server's address.
 
-Three starter dashboards ship as their own packages rather than being
+Starter dashboards ship as their own packages rather than being
 bundled into `metrics-stack-grafana` — see [Packages](#packages):
 
 - `metrics-stack-dashboards-node` — five dashboards, all templated over
@@ -407,6 +413,14 @@ bundled into `metrics-stack-grafana` — see [Packages](#packages):
   nominal" count, temperature/fan/voltage/current sensors, a templated view
   over generic sensor types (`$sensor_type`), and collector health
   (`ipmi_up`). Templated over `$instance`.
+- `metrics-stack-dashboards-zfs` — "ZFS Overview": pool states, ARC
+  size/target/hit-ratio, per-dataset I/O ops and throughput, ZFS filesystem
+  usage, ARC memory-throttle events, ZIL commits, and prefetch
+  effectiveness. Templated over `$instance`. Every metric comes from
+  node_exporter's built-in `zfs` and `filesystem` collectors
+  (`metrics-stack-exporter-node`) — no dedicated ZFS exporter required.
+  Deeper ZFS visibility (scrub age, per-vdev errors, snapshots) needs
+  `zpool status`-level data that kernel kstats don't expose.
 
 ## Architecture
 
@@ -495,6 +509,10 @@ packages/
 
   metrics-stack-dashboards-ipmi/
     dashboards/ipmi-overview.json
+    packaging/manifest.sh                    # no scriptlets needed
+
+  metrics-stack-dashboards-zfs/
+    dashboards/zfs-overview.json             # fed by node_exporter's zfs collector
     packaging/manifest.sh                    # no scriptlets needed
 
 packaging/

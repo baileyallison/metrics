@@ -1,0 +1,44 @@
+# managed by metrics-stack-prometheus
+# ZFS alerts from node_exporter's built-in zfs collector
+# (metrics-stack-exporter-node) -- no dedicated ZFS exporter needed for
+# these. Inert on hosts without ZFS: no series, no alerts.
+#
+# node_zfs_zpool_state has one series per possible state per pool, value 1
+# for the pool's current state (from /proc/spl/kstat/zfs/<pool>/state).
+groups:
+  - name: zfs-alerts
+    rules:
+      - alert: ZfsPoolFaulted
+        expr: node_zfs_zpool_state{state=~"faulted|suspended|unavail"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZFS pool {{ $labels.zpool }} is {{ $labels.state }} on {{ $labels.instance }}"
+          description: "Pool {{ $labels.zpool }} on {{ $labels.instance }} is in state {{ $labels.state }} -- data is unavailable or I/O is suspended. Check `zpool status {{ $labels.zpool }}` immediately."
+
+      - alert: ZfsPoolDegraded
+        expr: node_zfs_zpool_state{state="degraded"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ZFS pool {{ $labels.zpool }} is DEGRADED on {{ $labels.instance }}"
+          description: "Pool {{ $labels.zpool }} on {{ $labels.instance }} is running with reduced redundancy -- a vdev has failed or been taken offline. Check `zpool status {{ $labels.zpool }}` and replace the failed device."
+
+      - alert: ZfsPoolOffline
+        expr: node_zfs_zpool_state{state=~"offline|removed"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ZFS pool {{ $labels.zpool }} is {{ $labels.state }} on {{ $labels.instance }}"
+          description: "Pool {{ $labels.zpool }} on {{ $labels.instance }} has been {{ $labels.state }} for 15m. If this isn't intentional maintenance, investigate."
+
+      - alert: ZfsArcMemoryThrottling
+        expr: delta(node_zfs_arc_memory_throttle_count[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "ZFS ARC is being memory-throttled on {{ $labels.instance }}"
+          description: "The ARC on {{ $labels.instance }} hit memory pressure {{ $value }} time(s) in the last 15m -- ZFS caching is competing with other memory consumers. Check overall memory usage or cap the ARC (zfs_arc_max)."

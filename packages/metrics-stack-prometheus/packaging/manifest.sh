@@ -13,6 +13,7 @@ PKG_FILES=(
   "0644:prometheus/rules.d/stack-alerts.yml:/etc/prometheus/rules.d/stack-alerts.yml"
   "0644:prometheus/rules.d/smart-alerts.yml:/etc/prometheus/rules.d/smart-alerts.yml"
   "0644:prometheus/rules.d/ipmi-alerts.yml:/etc/prometheus/rules.d/ipmi-alerts.yml"
+  "0644:prometheus/rules.d/zfs-alerts.yml:/etc/prometheus/rules.d/zfs-alerts.yml"
   "0644:prometheus/targets.d/README.md:/etc/prometheus/targets.d/README.md"
   "0644:prometheus/alertmanagers.d/README.md:/etc/prometheus/alertmanagers.d/README.md"
   "0755:scripts/add-exporter.sh:/usr/bin/monitoring-add-exporter"
@@ -25,6 +26,7 @@ PKG_CONFIG_FILES=(
   /etc/prometheus/rules.d/stack-alerts.yml
   /etc/prometheus/rules.d/smart-alerts.yml
   /etc/prometheus/rules.d/ipmi-alerts.yml
+  /etc/prometheus/rules.d/zfs-alerts.yml
 )
 
 PKG_DIRECTORIES=(

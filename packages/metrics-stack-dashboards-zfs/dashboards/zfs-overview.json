@@ -1,0 +1,562 @@
+{
+ "id": null,
+ "uid": "zfs-overview",
+ "title": "ZFS Overview",
+ "tags": [
+  "monitoring-stack",
+  "zfs"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "instance",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(node_zfs_arc_size, instance)",
+     "refId": "StandardVariableQuery"
+    },
+    "refresh": 2,
+    "multi": true,
+    "includeAll": true,
+    "current": {}
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "stat",
+   "title": "Pools Not Online",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(node_zfs_zpool_state{instance=~\"$instance\",state!=\"online\"} == 1) OR on() vector(0)",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 1
+  },
+  {
+   "type": "stat",
+   "title": "ARC Size",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 6,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_arc_size{instance=~\"$instance\"}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "ARC Hit Ratio (5m)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(node_zfs_arc_hits{instance=~\"$instance\"}[5m])) / (sum(rate(node_zfs_arc_hits{instance=~\"$instance\"}[5m])) + sum(rate(node_zfs_arc_misses{instance=~\"$instance\"}[5m])))",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "id": 3
+  },
+  {
+   "type": "stat",
+   "title": "ARC Max (c_max)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 18,
+    "y": 0,
+    "w": 6,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_arc_c_max{instance=~\"$instance\"}",
+     "refId": "A"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "id": 4
+  },
+  {
+   "type": "table",
+   "title": "Pool States",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 10,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_zpool_state{instance=~\"$instance\"} == 1",
+     "refId": "A",
+     "format": "table",
+     "instant": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "id": 5,
+   "options": {
+    "showHeader": true
+   },
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {}
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "ARC Size vs Target",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 10,
+    "y": 4,
+    "w": 14,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_arc_size{instance=~\"$instance\"}",
+     "refId": "A",
+     "legendFormat": "size {{instance}}"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_arc_c{instance=~\"$instance\"}",
+     "refId": "B",
+     "legendFormat": "target {{instance}}"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_zfs_arc_c_max{instance=~\"$instance\"}",
+     "refId": "C",
+     "legendFormat": "max {{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes"
+    },
+    "overrides": []
+   },
+   "id": 6
+  },
+  {
+   "type": "timeseries",
+   "title": "ARC Hits vs Misses",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_arc_hits{instance=~\"$instance\"}[5m])",
+     "refId": "A",
+     "legendFormat": "hits {{instance}}"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_arc_misses{instance=~\"$instance\"}[5m])",
+     "refId": "B",
+     "legendFormat": "misses {{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "id": 7
+  },
+  {
+   "type": "timeseries",
+   "title": "ARC Hit Ratio Over Time",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (instance) (rate(node_zfs_arc_hits{instance=~\"$instance\"}[5m])) / (sum by (instance) (rate(node_zfs_arc_hits{instance=~\"$instance\"}[5m])) + sum by (instance) (rate(node_zfs_arc_misses{instance=~\"$instance\"}[5m])))",
+     "refId": "A",
+     "legendFormat": "{{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "max": 1,
+     "min": 0,
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "id": 8
+  },
+  {
+   "type": "timeseries",
+   "title": "Dataset Read/Write Ops",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zpool_dataset_reads{instance=~\"$instance\"}[5m])",
+     "refId": "A",
+     "legendFormat": "{{dataset}} reads"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zpool_dataset_writes{instance=~\"$instance\"}[5m])",
+     "refId": "B",
+     "legendFormat": "{{dataset}} writes"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "id": 9
+  },
+  {
+   "type": "timeseries",
+   "title": "Dataset Throughput",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zpool_dataset_nread{instance=~\"$instance\"}[5m])",
+     "refId": "A",
+     "legendFormat": "{{dataset}} read"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zpool_dataset_nwritten{instance=~\"$instance\"}[5m])",
+     "refId": "B",
+     "legendFormat": "{{dataset}} write"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "Bps"
+    },
+    "overrides": []
+   },
+   "id": 10
+  },
+  {
+   "type": "timeseries",
+   "title": "ZFS Filesystem Usage",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "1 - (node_filesystem_avail_bytes{fstype=\"zfs\",instance=~\"$instance\"} / node_filesystem_size_bytes{fstype=\"zfs\",instance=~\"$instance\"})",
+     "refId": "A",
+     "legendFormat": "{{instance}} {{mountpoint}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "max": 1,
+     "min": 0,
+     "unit": "percentunit"
+    },
+    "overrides": []
+   },
+   "id": 11
+  },
+  {
+   "type": "timeseries",
+   "title": "ARC Memory Throttle Events (15m)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 28,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "increase(node_zfs_arc_memory_throttle_count{instance=~\"$instance\"}[15m])",
+     "refId": "A",
+     "legendFormat": "{{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 12
+  },
+  {
+   "type": "timeseries",
+   "title": "ZIL Commits",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 36,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zil_commit_count{instance=~\"$instance\"}[5m])",
+     "refId": "A",
+     "legendFormat": "{{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "id": 13
+  },
+  {
+   "type": "timeseries",
+   "title": "Prefetch (zfetch) Hits vs Misses",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 36,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zfetch_hits{instance=~\"$instance\"}[5m])",
+     "refId": "A",
+     "legendFormat": "hits {{instance}}"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "rate(node_zfs_zfetch_misses{instance=~\"$instance\"}[5m])",
+     "refId": "B",
+     "legendFormat": "misses {{instance}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "id": 14
+  }
+ ]
+}
