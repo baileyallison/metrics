@@ -460,11 +460,17 @@ jobs:
           name: packages
           path: dist
 
-      - name: Upload release assets
-        # Third-party action pinned by commit SHA (v3.0.2) rather than a
-        # movable tag. v3 targets the Node 24 Actions runtime (v2 targeted
-        # the deprecated Node 20 and warned on every release).
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
-        with:
-          files: dist/*
-          fail_on_unmatched_files: true
+      - name: Create the release and upload packages
+        # gh is preinstalled on GitHub-hosted runners and authenticates with
+        # the workflow token, so no third-party action is needed here (this
+        # was the pipeline's only one). GH_REPO stands in for a checkout.
+        # On a re-run the release already exists, so fall back to uploading
+        # the assets over it; a missing dist/ file fails either path.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag dist/*; then
+            echo "release exists (or create failed) -- uploading assets to it"
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          fi
