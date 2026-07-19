@@ -255,6 +255,23 @@ Alerting rules already shipped (see
 | `PrometheusConfigReloadFailed` | Last Prometheus config reload failed |
 | `AlertmanagerConfigReloadFailed` | Last Alertmanager config reload failed |
 | `AlertmanagerNotificationsFailing` | Alertmanager notifications are erroring |
+| `DiskSmartHealthFailed` | A drive's SMART overall-health check reports FAILED |
+| `DiskNvmeCriticalWarning` | NVMe critical-warning bits set (spare/temp/media/read-only) |
+| `DiskNvmeSpareLow` | NVMe available spare below the drive's own threshold |
+| `DiskNvmeWearHigh` | NVMe endurance used > 90% |
+| `DiskMediaErrorsIncreasing` | New NVMe media errors in the last 6h |
+| `DiskAtaSectorsIncreasing` | Reallocated/pending sectors growing on an ATA drive (6h) |
+| `DiskScsiDefectsIncreasing` | SAS/SCSI grown defect list growing (6h) |
+| `DiskUncorrectedErrorsIncreasing` | New uncorrected read/write errors (6h) |
+| `DiskTemperatureHigh` | Drive above 60°C for 15m |
+| `IpmiSensorCritical` | A BMC sensor (temp/fan/voltage/power) in critical state |
+| `IpmiSensorWarning` | A BMC sensor in warning state for 15m |
+| `IpmiCollectorDown` | ipmi_exporter can't read the BMC for 30m |
+
+The disk and BMC rules ship with the base Prometheus package but reference
+metrics from `metrics-stack-exporter-smartctl` / `metrics-stack-exporter-ipmi`
+— with no such exporter registered there are no matching series, so they sit
+inert until the moment those metrics appear. No per-exporter wiring needed.
 
 ## Clustering Alertmanager (HA)
 
