@@ -93,7 +93,8 @@ jobs:
             ./dist/metrics-stack-common_*.deb \
             ./dist/metrics-stack-prometheus_*.deb \
             ./dist/metrics-stack-alertmanager_*.deb \
-            ./dist/metrics-stack-grafana_*.deb
+            ./dist/metrics-stack-grafana_*.deb \
+            ./dist/metrics-stack-loki_*.deb
 
       - name: Install exporter and dashboard packages
         # One transaction; only the stack components have to go first
@@ -101,7 +102,7 @@ jobs:
         # monitoring-add-exporter and auto-registers. The six leaf packages
         # have no ordering constraints among themselves.
         run: |
-          sudo apt install -y ./dist/metrics-stack-exporter-*.deb ./dist/metrics-stack-dashboards-*.deb
+          sudo apt install -y ./dist/metrics-stack-exporter-*.deb ./dist/metrics-stack-dashboards-*.deb ./dist/metrics-stack-alloy_*.deb
 
       - name: Wait for stack services to become healthy
         run: |
@@ -173,6 +174,7 @@ jobs:
           # in the resolved labels, not scrapePool.
           jobs = {t['labels'].get('job') for t in active}
           assert 'alertmanager' in jobs, 'alertmanager did not auto-register into targets.d'
+          assert 'loki' in jobs, 'loki did not auto-register into targets.d'
           assert 'node' in jobs, 'node-exporter did not auto-register into targets.d'
           assert 'smartctl' in jobs, 'smartctl-exporter did not auto-register into targets.d'
           assert 'ipmi' in jobs, 'ipmi-exporter did not auto-register into targets.d'
@@ -227,6 +229,7 @@ jobs:
           assert any('smartctl Overview' in t for t in titles), 'smartctl-overview dashboard not found'
           assert any('IPMI Overview' in t for t in titles), 'ipmi-overview dashboard not found'
           assert any('ZFS Overview' in t for t in titles), 'zfs-overview dashboard not found'
+          assert any('Logs Overview' in t for t in titles), 'logs-overview dashboard not found'
           "; then
               success=1
               break
@@ -286,6 +289,41 @@ jobs:
           systemctl is-active --quiet alertmanager || { echo "alertmanager not active after cluster disable"; exit 1; }
           [ ! -f /etc/alertmanager/cluster.args ] || { echo "cluster.args not removed on disable"; exit 1; }
           [ ! -f /etc/prometheus/alertmanagers.d/peers.yml ] || { echo "peers.yml not removed on disable"; exit 1; }
+
+      - name: Check log pipeline (alloy -> loki), then uninstall Loki cleanly
+        run: |
+          # Loki's ingester reports ready ~15s after start.
+          ok=0
+          for i in $(seq 1 30); do
+            curl -fsS --max-time 10 http://localhost:3100/ready >/dev/null 2>&1 && { ok=1; break; }
+            sleep 3
+          done
+          [ "$ok" = "1" ] || { echo "loki never became ready"; sudo journalctl -u loki --no-pager | tail -30; exit 1; }
+          systemctl is-active --quiet alloy || { echo "alloy is not active"; sudo journalctl -u alloy --no-pager | tail -30; exit 1; }
+          test -f /etc/grafana/provisioning/datasources/loki.yml || { echo "Loki Grafana datasource was not provisioned"; exit 1; }
+          # End-to-end: journald lines must be queryable from Loki, proving
+          # journal -> alloy -> loki on a real host.
+          ok=0
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 -G http://localhost:3100/loki/api/v1/query \
+                --data-urlencode 'query=count_over_time({job="systemd-journal"}[5m])' | python3 -c "
+          import json, sys
+          result = json.load(sys.stdin)['data']['result']
+          total = sum(float(r['value'][1]) for r in result)
+          print(f'{len(result)} journal streams, {total:.0f} lines in loki')
+          assert total > 0, 'no journal lines in loki yet'
+          "; then ok=1; break; fi
+            sleep 5
+          done
+          [ "$ok" = "1" ] || { echo "no journal logs arrived in loki"; sudo journalctl -u alloy --no-pager | tail -30; exit 1; }
+          # Clean uninstall: datasource + scrape target deregistered, rest
+          # of the stack untouched. (alloy stays; it just retries pushes.)
+          sudo apt purge -y metrics-stack-loki
+          [ ! -f /etc/grafana/provisioning/datasources/loki.yml ] || { echo "loki datasource file not cleaned up"; exit 1; }
+          [ ! -f /etc/prometheus/targets.d/loki.yml ] || { echo "loki target file not cleaned up"; exit 1; }
+          curl -fsS --max-time 10 http://localhost:9090/-/healthy >/dev/null
+          curl -fsS --max-time 10 http://localhost:3000/api/health >/dev/null
+          echo "log pipeline verified; loki uninstalled cleanly"
 
       - name: Reinstall packages and confirm the upgrade path leaves them running
         run: |
@@ -362,7 +400,7 @@ jobs:
       - name: Dump logs on failure
         if: failure()
         run: |
-          for svc in metrics-network prometheus alertmanager grafana node-exporter smartctl-exporter ipmi-exporter; do
+          for svc in metrics-network prometheus alertmanager grafana loki alloy node-exporter smartctl-exporter ipmi-exporter; do
             echo "=== $svc ==="
             sudo systemctl status "$svc" --no-pager || true
             sudo journalctl -u "$svc" --no-pager | tail -50 || true
@@ -381,7 +419,7 @@ jobs:
     # Installing with --setopt=tsflags=noscripts skips scriptlet execution
     # entirely and validates what a container-based job *can* meaningfully
     # check: real dnf dependency resolution (Requires: podman against a
-    # real EL9 AppStream repo), that all 12 packages install together
+    # real EL9 AppStream repo), that all 15 packages install together
     # without file conflicts, correct file placement/permissions, and that
     # %config(noreplace) markers landed on the right files. It does not
     # cover service startup, exporter auto-registration, or SELinux
@@ -411,6 +449,9 @@ jobs:
             metrics-stack-prometheus \
             metrics-stack-alertmanager \
             metrics-stack-grafana \
+            metrics-stack-loki \
+            metrics-stack-alloy \
+            metrics-stack-dashboards-logs \
             metrics-stack-exporter-node \
             metrics-stack-exporter-smartctl \
             metrics-stack-exporter-ipmi \
@@ -427,6 +468,9 @@ jobs:
           test -f /usr/bin/monitoring-configure-cluster
           test -x /etc/alertmanager/entrypoint.sh
           test -f /etc/prometheus/alertmanagers.d/README.md
+          test -f /etc/loki/config.yml
+          test -f /etc/alloy/config.alloy
+          test -f /var/lib/grafana/dashboards/logs-overview.json
           test -f /var/lib/grafana/dashboards/node-overview.json
           test -f /var/lib/grafana/dashboards/node-cpu.json
           test -f /var/lib/grafana/dashboards/node-memory.json

@@ -1,0 +1,61 @@
+// managed by metrics-stack-alloy
+// Local edits survive package upgrades: this file ships as
+// %config(noreplace) (rpm) / a conffile (deb).
+//
+// Ships two log streams to Loki:
+//   job="systemd-journal" -- everything journald has (services, kernel,
+//                            sshd, podman containers), labeled by unit/host
+//   job="varlog"          -- plain files under /var/log/*.log that never
+//                            reach the journal (samba, some legacy daemons)
+//
+// The Loki endpoint comes from $LOKI_URL, set in alloy.container with an
+// optional override in /etc/alloy/loki.env -- see that unit file.
+
+loki.source.journal "journal" {
+  // Journal directories are mounted at their host paths, so default
+  // discovery finds both /var/log/journal (persistent) and
+  // /run/log/journal (volatile).
+  relabel_rules = loki.relabel.journal.rules
+  labels        = {job = "systemd-journal", host = constants.hostname}
+  forward_to    = [loki.write.default.receiver]
+}
+
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "syslog_identifier"
+  }
+
+  // 0=emerg .. 7=debug; lets dashboards/queries filter error-and-worse
+  // with priority=~"0|1|2|3".
+  rule {
+    source_labels = ["__journal_priority"]
+    target_label  = "priority"
+  }
+}
+
+local.file_match "varlog" {
+  path_targets = [{
+    __path__ = "/var/log/*.log",
+    job      = "varlog",
+    host     = constants.hostname,
+  }]
+}
+
+loki.source.file "varlog" {
+  targets    = local.file_match.varlog.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = sys.env("LOKI_URL")
+  }
+}

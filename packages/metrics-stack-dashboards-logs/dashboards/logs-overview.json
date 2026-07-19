@@ -1,0 +1,359 @@
+{
+ "id": null,
+ "uid": "logs-overview",
+ "title": "Logs Overview",
+ "tags": [
+  "monitoring-stack",
+  "loki"
+ ],
+ "timezone": "browser",
+ "schemaVersion": 39,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "host",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "host",
+     "refId": "LokiVariableQueryEditor-VariableQuery",
+     "type": 1
+    },
+    "refresh": 2,
+    "multi": true,
+    "includeAll": true,
+    "current": {}
+   },
+   {
+    "name": "unit",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": {
+     "label": "unit",
+     "stream": "{job=\"systemd-journal\", host=~\"$host\"}",
+     "refId": "LokiVariableQueryEditor-VariableQuery",
+     "type": 1
+    },
+    "refresh": 2,
+    "multi": true,
+    "includeAll": true,
+    "current": {}
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "stat",
+   "title": "Log Lines (1h)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({job=~\"systemd-journal|varlog\", host=~\"$host\"}[1h]))",
+     "refId": "A",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 1
+  },
+  {
+   "type": "stat",
+   "title": "Error-or-worse Lines (1h)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({job=\"systemd-journal\", priority=~\"0|1|2|3\", host=~\"$host\"}[1h]))",
+     "refId": "A",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "Units Logging (1h)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "count(sum by (unit) (count_over_time({job=\"systemd-journal\", host=~\"$host\"}[1h])))",
+     "refId": "A",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 3
+  },
+  {
+   "type": "timeseries",
+   "title": "Log Volume by Unit",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (unit) (count_over_time({job=\"systemd-journal\", host=~\"$host\"}[$__auto]))",
+     "refId": "A",
+     "queryType": "range",
+     "legendFormat": "{{unit}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "Error-or-worse Volume by Unit",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (unit) (count_over_time({job=\"systemd-journal\", priority=~\"0|1|2|3\", host=~\"$host\"}[$__auto]))",
+     "refId": "A",
+     "queryType": "range",
+     "legendFormat": "{{unit}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 5
+  },
+  {
+   "type": "timeseries",
+   "title": "File Log Volume (/var/log/*.log)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (filename) (count_over_time({job=\"varlog\", host=~\"$host\"}[$__auto]))",
+     "refId": "A",
+     "queryType": "range",
+     "legendFormat": "{{filename}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 6
+  },
+  {
+   "type": "timeseries",
+   "title": "Log Volume by Host",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (host) (count_over_time({job=~\"systemd-journal|varlog\", host=~\"$host\"}[$__auto]))",
+     "refId": "A",
+     "queryType": "range",
+     "legendFormat": "{{host}}"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "drawStyle": "bars",
+      "stacking": {
+       "mode": "normal"
+      }
+     },
+     "unit": "short"
+    },
+    "overrides": []
+   },
+   "id": 7
+  },
+  {
+   "type": "logs",
+   "title": "Journal Logs",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 24,
+    "h": 12
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{job=\"systemd-journal\", host=~\"$host\", unit=~\"$unit\"}",
+     "refId": "A",
+     "queryType": "range"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {},
+    "overrides": []
+   },
+   "id": 8,
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true
+   }
+  }
+ ]
+}

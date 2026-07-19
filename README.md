@@ -24,6 +24,9 @@ unit.
 | `metrics-stack-dashboards-smartctl` | Starter "smartctl Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-ipmi` | Starter "IPMI Overview" Grafana dashboard | nothing (pure data) |
 | `metrics-stack-dashboards-zfs` | Starter "ZFS Overview" Grafana dashboard (powered by node_exporter's zfs collector — no dedicated exporter) | nothing (pure data) |
+| `metrics-stack-loki` | Loki log aggregation (opt-in — **not** pulled in by the metapackage) | Podman, `metrics-stack-common` |
+| `metrics-stack-alloy` | Grafana Alloy log collector: ships journald + `/var/log/*.log` to Loki | Podman only — **no** stack packages |
+| `metrics-stack-dashboards-logs` | Starter "Logs Overview" Grafana dashboard (Loki datasource) | nothing (pure data) |
 
 Each component package installs and runs standalone, so partial deployments
 work: Prometheus without Grafana, an alerting-free stack, or Grafana on a
@@ -89,6 +92,12 @@ sudo apt install ./metrics-stack-dashboards-node_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-smartctl_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-ipmi_<version>-1_all.deb
 sudo apt install ./metrics-stack-dashboards-zfs_<version>-1_all.deb
+
+# optional logs pipeline -- Loki on the monitoring server, Alloy on every
+# host whose logs you want (see "Logs"):
+sudo apt install ./metrics-stack-loki_<version>-1_all.deb
+sudo apt install ./metrics-stack-alloy_<version>-1_all.deb
+sudo apt install ./metrics-stack-dashboards-logs_<version>-1_all.deb
 ```
 
 Podman is pulled in as a dependency automatically; each package's
@@ -172,6 +181,8 @@ Check each image's tag list before bumping:
 [prom/alertmanager](https://hub.docker.com/r/prom/alertmanager/tags),
 [prom/node-exporter](https://hub.docker.com/r/prom/node-exporter/tags),
 [grafana/grafana](https://hub.docker.com/r/grafana/grafana/tags),
+[grafana/loki](https://hub.docker.com/r/grafana/loki/tags),
+[grafana/alloy](https://hub.docker.com/r/grafana/alloy/tags),
 [prometheuscommunity/smartctl-exporter](https://hub.docker.com/r/prometheuscommunity/smartctl-exporter/tags).
 
 ## Releasing
@@ -192,7 +203,7 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
    - **smoke-test-ubuntu** — on a live Ubuntu 24.04 GitHub-hosted runner (a
      real systemd VM, not a container, so `systemctl`/Podman/Quadlet/apt
      dependency resolution all behave as they would on a real box), installs
-     the *actual built* `.deb`s (all twelve packages), confirms
+     the *actual built* `.deb`s (all fifteen packages), confirms
      Prometheus/Alertmanager/Grafana/the exporters are healthy, confirms
      Alertmanager and node_exporter/smartctl_exporter/ipmi_exporter
      **auto-registered** themselves as Prometheus targets with no manual
@@ -210,7 +221,7 @@ tag-gated. Pushing a `v*` tag (e.g. `v1.1.0`) runs the full pipeline:
      (identically for a correct or broken package, so not a useful signal).
      Installs with `--setopt=tsflags=noscripts` instead, validating what a
      container *can* meaningfully check — real `dnf`/`Requires: podman`
-     dependency resolution against EL9's AppStream repo, that all twelve
+     dependency resolution against EL9's AppStream repo, that all fifteen
      packages install together without file conflicts, correct file
      placement/permissions, and that `%config(noreplace)` markers landed
      correctly. It does not cover service startup or SELinux labeling
@@ -311,6 +322,42 @@ the flags and peer registration, closes 9094, and restarts standalone.
 **Security note:** the gossip protocol is unauthenticated and unencrypted;
 run it only over a trusted network or VPN/tunnel between nodes. (Upstream
 supports mTLS for cluster traffic, but that's not wired up here.)
+
+## Logs (Loki + Alloy)
+
+An opt-in logs pipeline alongside the metrics: **Loki** aggregates logs on
+the monitoring server, and **Grafana Alloy** runs on every host you want
+logs from, shipping the systemd journal (labeled by `unit`, `host`,
+`priority`) plus plain `/var/log/*.log` files (Samba and friends that never
+touch journald). Alloy is Grafana's successor to the deprecated Promtail.
+
+```
+# on the monitoring server:
+sudo apt install ./metrics-stack-loki_<version>-1_all.deb \
+  ./metrics-stack-dashboards-logs_<version>-1_all.deb
+
+# on every host whose logs you want (including the monitoring server):
+sudo apt install ./metrics-stack-alloy_<version>-1_all.deb
+```
+
+Same auto-wiring as the rest of the stack: Loki's postinstall opens
+3100/tcp (remote Alloy agents push here), registers itself as a Prometheus
+scrape target, and provisions the Grafana datasource when those are local.
+Alloy defaults to shipping to `127.0.0.1:3100` — right for a host that also
+runs Loki; on any other host, point it at your Loki server:
+
+```
+echo 'LOKI_URL=http://<loki-host>:3100/loki/api/v1/push' | sudo tee /etc/alloy/loki.env
+sudo systemctl restart alloy
+```
+
+Logs are kept 30 days by default (`retention_period` in
+`/etc/loki/config.yml`, a conffile) and stored under `/var/lib/loki`.
+Browse them in Grafana via the "Logs Overview" dashboard or Explore.
+
+**Security note:** port 3100 is unauthenticated (push, query, and Loki's
+own metrics) — same trusted-network posture as Alertmanager gossip; keep it
+inside your LAN/VPN.
 
 ## Adding exporters
 
@@ -435,9 +482,14 @@ other exporters (containers, native, remote) ──────┼──► Prom
                                                     │        └──◄ Grafana (:3000) queries for graphs
                                                     │
      'metrics' Podman network (from metrics-stack-common) joins Prometheus,
-     Alertmanager, and Grafana by container name; exporter packages stay on
-     the host network -- both so they see real host interfaces/proc/sys/
-     devices, and so they install standalone without the stack packages.
+     Alertmanager, Grafana, and Loki by container name; exporter packages
+     stay on the host network -- both so they see real host interfaces/
+     proc/sys/devices, and so they install standalone without the stack
+     packages.
+
+     Logs (opt-in): alloy (host network, on every host) reads journald +
+     /var/log/*.log and pushes to Loki (:3100) on the monitoring server;
+     Grafana queries Loki alongside Prometheus.
 ```
 
 ## Repository layout
@@ -515,6 +567,20 @@ packages/
     dashboards/zfs-overview.json             # fed by node_exporter's zfs collector
     packaging/manifest.sh                    # no scriptlets needed
 
+  metrics-stack-loki/
+    containers/loki.container                # Quadlet unit, pinned image tag
+    loki/config.yml                          # single-node filesystem storage, 30d retention
+    packaging/                               # manifest + the same three scriptlets
+
+  metrics-stack-alloy/
+    containers/alloy.container               # Quadlet unit, host network, log mounts
+    alloy/config.alloy                       # journald + /var/log/*.log -> loki.write
+    packaging/                               # manifest + the same three scriptlets
+
+  metrics-stack-dashboards-logs/
+    dashboards/logs-overview.json            # Loki datasource
+    packaging/manifest.sh                    # no scriptlets needed
+
 packaging/
   build.sh                                   # generic: builds every packages/*/ into .rpm+.deb
   templates/
@@ -537,6 +603,10 @@ packaging/
 | `/var/lib/prometheus/` | Prometheus TSDB data | `metrics-stack-prometheus` |
 | `/var/lib/alertmanager/` | Alertmanager state | `metrics-stack-alertmanager` |
 | `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` | `metrics-stack-grafana` (dir), dashboard packages (files) |
+| `/etc/loki/config.yml` | Loki config incl. retention (bind-mounted read-only) | `metrics-stack-loki` |
+| `/var/lib/loki/` | Loki chunks + tsdb index | `metrics-stack-loki` |
+| `/etc/alloy/` | `config.alloy` + optional `loki.env` endpoint override | `metrics-stack-alloy` |
+| `/var/lib/alloy/` | Alloy positions/WAL | `metrics-stack-alloy` |
 
 ## Service names (same on both distros)
 
@@ -545,7 +615,8 @@ packaging/
 `metrics-stack-alertmanager`); `grafana` (from `metrics-stack-grafana`);
 `node-exporter` (from `metrics-stack-exporter-node`); `smartctl-exporter`
 (from `metrics-stack-exporter-smartctl`); `ipmi-exporter`
-(from `metrics-stack-exporter-ipmi`) — all generated by Quadlet from each
+(from `metrics-stack-exporter-ipmi`); `loki` (from `metrics-stack-loki`);
+`alloy` (from `metrics-stack-alloy`) — all generated by Quadlet from each
 package's `.container`/`.network` files.
 
 ## Notes

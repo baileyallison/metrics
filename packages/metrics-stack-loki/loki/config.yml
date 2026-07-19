@@ -1,0 +1,48 @@
+# managed by metrics-stack-loki
+# Local edits survive package upgrades: this file ships as
+# %config(noreplace) (rpm) / a conffile (deb).
+#
+# Single-node Loki with filesystem storage under /var/lib/loki (mounted at
+# /loki in the container). auth_enabled: false means anyone who can reach
+# port 3100 can push and query -- same trusted-network posture as the rest
+# of the stack; keep 3100 inside your LAN/VPN.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+# Loki 3.x requires tsdb + v13 (structured metadata is on by default).
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# The compactor runs compaction and enforces retention; without it the
+# tsdb index degrades and retention_period below is never applied.
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+limits_config:
+  # How long logs are kept. Tune to taste; disk usage lives under
+  # /var/lib/loki on the host.
+  retention_period: 30d

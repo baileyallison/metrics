@@ -1,0 +1,35 @@
+# managed by metrics-stack-loki
+# Version control: bump the Image= tag below, commit, then cut a release
+# (see README "Releasing"); hosts pick it up via `dnf upgrade
+# metrics-stack-loki` / `apt upgrade`. Check
+# https://hub.docker.com/r/grafana/loki/tags for newer releases before
+# bumping.
+[Unit]
+Description=Loki
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/grafana/loki:3.7.3
+ContainerName=loki
+Network=metrics.network
+
+# 3100 serves everything: the push API for Alloy agents (possibly remote --
+# the package postinstall opens it on the firewall), LogQL queries for
+# Grafana, and Loki's own Prometheus /metrics.
+PublishPort=3100:3100
+
+Volume=/etc/loki:/etc/loki:Z,ro
+
+# :U auto-chowns the host directory to the container's UID on start (the
+# official image runs as non-root 'loki'), so we don't hardcode its UID.
+Volume=/var/lib/loki:/loki:Z,U
+
+Exec=-config.file=/etc/loki/config.yml
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target

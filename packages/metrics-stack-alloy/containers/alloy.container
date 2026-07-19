@@ -1,0 +1,52 @@
+# managed by metrics-stack-alloy
+# Version control: bump the Image= tag below, commit, then cut a release
+# (see README "Releasing"); hosts pick it up via `dnf upgrade
+# metrics-stack-alloy` / `apt upgrade`. Check
+# https://hub.docker.com/r/grafana/alloy/tags for newer releases before
+# bumping.
+#
+# Network=host like the exporter packages: installs standalone on any host
+# and reaches Loki wherever it is -- a co-located one via its published
+# 127.0.0.1:3100, or a remote one via /etc/alloy/loki.env (see below).
+# Nothing listens except Alloy's debug UI, bound to localhost only.
+[Unit]
+Description=Grafana Alloy (log collector)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/grafana/alloy:v1.17.1
+ContainerName=alloy
+Network=host
+
+# Where logs are shipped. The default works when metrics-stack-loki is on
+# this same host; for a remote Loki, override without touching this file:
+#   echo 'LOKI_URL=http://<loki-host>:3100/loki/api/v1/push' > /etc/alloy/loki.env
+#   systemctl restart alloy
+Environment=LOKI_URL=http://127.0.0.1:3100/loki/api/v1/push
+EnvironmentFile=-/etc/alloy/loki.env
+
+Volume=/etc/alloy:/etc/alloy:Z,ro
+Volume=/var/lib/alloy:/var/lib/alloy:Z,U
+
+# Host logs, read-only at their real paths so journald's default discovery
+# works in-container. Deliberately NO :Z on these -- relabeling /var/log or
+# /run would wreck the host's own SELinux labels; label separation is
+# disabled for this container instead (below).
+Volume=/var/log:/var/log:ro
+Volume=/run/log/journal:/run/log/journal:ro
+Volume=/etc/machine-id:/etc/machine-id:ro
+
+# Reading arbitrary host logs doesn't fit an SELinux-confined container
+# category -- same class of exception as smartctl/ipmi needing --privileged,
+# but narrower: only label separation is disabled, no extra capabilities.
+PodmanArgs=--security-opt label=disable
+
+Exec=run /etc/alloy/config.alloy --storage.path=/var/lib/alloy --server.http.listen-addr=127.0.0.1:12345
+
+[Service]
+Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target default.target
