@@ -344,12 +344,9 @@ Same auto-wiring as the rest of the stack: Loki's postinstall opens
 3100/tcp (remote Alloy agents push here), registers itself as a Prometheus
 scrape target, and provisions the Grafana datasource when those are local.
 Alloy defaults to shipping to `127.0.0.1:3100` — right for a host that also
-runs Loki; on any other host, point it at your Loki server:
-
-```
-echo 'LOKI_URL=http://<loki-host>:3100/loki/api/v1/push' | sudo tee /etc/alloy/loki.env
-sudo systemctl restart alloy
-```
+runs Loki; on any other host, point it at your Loki server by editing
+`LOKI_URL` in `/etc/alloy/loki.env` (a conffile — the edit survives
+upgrades), then `sudo systemctl restart alloy`.
 
 Logs are kept 30 days by default (`retention_period` in
 `/etc/loki/config.yml`, a conffile) and stored under `/var/lib/loki`.
@@ -605,7 +602,7 @@ packaging/
 | `/var/lib/grafana/` | Grafana's sqlite db + `dashboards/` | `metrics-stack-grafana` (dir), dashboard packages (files) |
 | `/etc/loki/config.yml` | Loki config incl. retention (bind-mounted read-only) | `metrics-stack-loki` |
 | `/var/lib/loki/` | Loki chunks + tsdb index | `metrics-stack-loki` |
-| `/etc/alloy/` | `config.alloy` + optional `loki.env` endpoint override | `metrics-stack-alloy` |
+| `/etc/alloy/` | `config.alloy` + `loki.env` (Loki endpoint, conffiles) | `metrics-stack-alloy` |
 | `/var/lib/alloy/` | Alloy positions/WAL | `metrics-stack-alloy` |
 
 ## Service names (same on both distros)

@@ -13,11 +13,13 @@ PKG_DEPENDS=(podman)
 # packaging/build.sh) -- only files outside that convention are listed here.
 PKG_FILES=(
   "0644:alloy/config.alloy:/etc/alloy/config.alloy"
+  "0644:alloy/loki.env:/etc/alloy/loki.env"
 )
 
 # Convention-staged files (containers/) are marked config automatically.
 PKG_CONFIG_FILES=(
   /etc/alloy/config.alloy
+  /etc/alloy/loki.env
 )
 
 PKG_DIRECTORIES=(

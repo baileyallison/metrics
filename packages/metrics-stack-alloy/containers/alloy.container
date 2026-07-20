@@ -19,12 +19,12 @@ Image=docker.io/grafana/alloy:v1.17.1
 ContainerName=alloy
 Network=host
 
-# Where logs are shipped. The default works when metrics-stack-loki is on
-# this same host; for a remote Loki, override without touching this file:
-#   echo 'LOKI_URL=http://<loki-host>:3100/loki/api/v1/push' > /etc/alloy/loki.env
-#   systemctl restart alloy
-Environment=LOKI_URL=http://127.0.0.1:3100/loki/api/v1/push
-EnvironmentFile=-/etc/alloy/loki.env
+# Where logs are shipped: LOKI_URL in /etc/alloy/loki.env (a conffile that
+# ships with a localhost default -- edit it for a remote Loki and restart).
+# NOTE: Quadlet's [Container] EnvironmentFile has no systemd '-' optional
+# prefix (it would be parsed as a relative path), so the file must exist --
+# which it always does, since this package ships it.
+EnvironmentFile=/etc/alloy/loki.env
 
 Volume=/etc/alloy:/etc/alloy:Z,ro
 Volume=/var/lib/alloy:/var/lib/alloy:Z,U
